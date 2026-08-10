@@ -172,11 +172,9 @@ was released on two lines: 3.1.0 on mainline, 2.22.2 as a backport.
 claims  >= 3.0.0rc0, < 3.1.0
 claims  < 2.22.2
 
-174 tags in the repository, 7 probed (4.0%)
+174 tags in the repository, 5 probed (2.9%)
 
 version    fix present?   rule                   outcome
-0.9.1      UNKNOWN        unmentioned-line       [symbol_not_found]
-1.30.0     UNKNOWN        unmentioned-line       [symbol_not_found]
 2.22.1     absent         below-fixed            consistent
 2.22.2     PRESENT        fixed                  consistent
 2.22.4     PRESENT        below-introduced       consistent
@@ -184,8 +182,12 @@ version    fix present?   rule                   outcome
 3.1.0      PRESENT        fixed                  consistent
 
 OVERCLAIM  3.0.1          [below-fixed]
-gap        0.9.1-1.30.0   [symbol_not_found]
 ```
+
+Originally 7 probes. The open-below fix described under Vitrage removed 0.9.1
+and 1.30.0: both sit below the claim `< 2.22.2`, which covers them, so they
+were never unmentioned lines. Their `symbol_not_found` results were noise
+rather than gaps in coverage, and the finding is unchanged.
 
 ### The finding
 
@@ -213,13 +215,15 @@ redis one did not.
 **Both branches' fixes located unaided**, at 2.22.2 and 3.1.0, absent at 2.22.1.
 The backport case resolved correctly a second time.
 
-**Boundary selection stayed cheap and was sufficient.** Seven probes out of 174
-tags (4.0%), and the edge probe alone exposed the error — `below-fixed` selects
+**Boundary selection stayed cheap and was sufficient.** Five probes out of 174
+tags (2.9%), and the edge probe alone exposed the error — `below-fixed` selects
 only the version immediately under `fixed`, which was 3.0.1. Probing the range
 interior would have cost more and found the same thing.
 
-**`symbol_not_found` behaved as designed.** `gateway_proxy_handler` did not exist
-in 0.9.1 or 1.30.0, so those probes are honest gaps rather than false clears.
+**`symbol_not_found` behaved as designed** on the run this section originally
+recorded: `gateway_proxy_handler` did not exist in 0.9.1 or 1.30.0, so those
+probes returned honest gaps rather than false clears. Those two versions are no
+longer probed at all — see the note under the table.
 
 ### The defect this run exposed — fixed
 
@@ -241,12 +245,16 @@ claim — but it is now on screen where a reader will see it.
 
 ### What this says about `unmentioned-line`
 
-The rule fired twice here (0.9.1, 1.30.0) and both times returned
-`symbol_not_found` — honest gaps, no noise. Combined with redis, where it
-produced four true-but-immaterial disagreements, the picture is that the rule is
-**not wrong, but its yield depends entirely on how far the unmentioned lines are
-from the fix.** No change yet; a third case should decide whether it needs
-release-line distance awareness.
+As originally run the rule fired twice here (0.9.1, 1.30.0) and both times
+returned `symbol_not_found` — honest gaps, no noise. Combined with redis, where
+it produced four true-but-immaterial disagreements, the reading was that the
+rule is **not wrong, but its yield depends on how far the unmentioned lines are
+from the fix.**
+
+The Vitrage case then showed those two probes should never have fired: both sit
+below an open-below claim that covers them. After that fix the rule does not
+fire on this advisory at all, which is the correct behaviour and removes MLflow
+as evidence either way.
 
 ### Two guard-shaped fixes out of two
 
@@ -329,7 +337,7 @@ Third outing, third distinct behaviour:
 | advisory | fired on | result |
 |---|---|---|
 | redis-py | 5.x–8.x, above the claims | true, immaterial (guard replaced in 4.5.5) |
-| MLflow | 0.9.1, 1.30.0 | honest `symbol_not_found` gaps |
+| MLflow | 0.9.1, 1.30.0, below an open claim | two spurious probes; no longer fires |
 | Vitrage | 0.7.0–11.0.0, below an open claim | **twelve false positives** |
 
 The Vitrage case was a bug rather than a property of the rule, and it is now
