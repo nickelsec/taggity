@@ -1,0 +1,28 @@
+# Pymatgen arbitrary code execution via parse_transformation_string.
+# The function ran a caller-supplied basis-change string through eval, guarded
+# only by blanking __builtins__, which is not a sandbox. The fix removes eval
+# and round-trips through sympy instead.
+#
+# The corpus case for a DANGER-SHAPED fix asked with the natural polarity. Every
+# other multi-branch advisory here was fixed by ADDING a guard, so its spec sets
+# indicates: fixed and its verdicts read backwards. This one removes the
+# dangerous call, so VULNERABLE means what it says.
+#
+# Checked by hand: eval is present in settings.py at 2024.1.27 and absent at
+# 2024.2.20 and 2024.3.1. The advisory claims < 2024.2.20 and is right.
+package:
+  ecosystem: PyPI
+  name: pymatgen
+repo: https://github.com/materialsproject/pymatgen
+advisory: PYSEC-2024-226
+
+authoring:
+  mode: manual
+  reviewed_by: nick
+
+signal:
+  code:
+    file: pymatgen/symmetry/settings.py
+    symbol: parse_transformation_string
+    rule:
+      calls: eval
