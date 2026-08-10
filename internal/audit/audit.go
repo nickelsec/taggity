@@ -49,23 +49,123 @@ type Report struct {
 	Results    []Result
 }
 
-// Findings returns only the results worth acting on.
-func (r *Report) Findings() []Result {
-	var out []Result
-	for _, res := range r.Results {
-		if res.Outcome == Disagreement {
-			out = append(out, res)
+// Finding is one structural observation, covering every consecutive probed
+// version that shares it.
+//
+// Versions are grouped rather than listed individually because a single edit to
+// a file shows up at every release after it. The redis-py audit probed four
+// releases from 5.3.1 to 8.1.0 and reported four disagreements, when one commit
+// in 4.5.5 explained all of them. Counting versions instead of changes inflates
+// a report by whatever number of releases happened to be probed, which is the
+// kind of arithmetic that makes a tool untrustworthy.
+type Finding struct {
+	// From and To bound the affected versions, inclusive. They are equal when
+	// a single version is involved.
+	From, To string
+	// Versions are the probed versions this finding covers, in order.
+	Versions []string
+	// Verdict is what the engine concluded for all of them.
+	Verdict taggity.Verdict
+	// Reason is set when the verdict is Unknown.
+	Reason taggity.Reason
+	// Rules are the boundary rules that selected these versions.
+	Rules []string
+}
+
+// Span renders the finding's version range for a report.
+func (f Finding) Span() string {
+	if f.From == f.To {
+		return f.From
+	}
+	return f.From + "–" + f.To
+}
+
+// Findings returns disagreements, grouped into structural observations.
+func (r *Report) Findings() []Finding {
+	return r.group(func(res Result) bool { return res.Outcome == Disagreement })
+}
+
+// Unknowns returns indeterminate results, grouped the same way. A run that
+// could not answer for six consecutive versions has one gap, not six.
+func (r *Report) Unknowns() []Finding {
+	return r.group(func(res Result) bool { return res.Outcome == Indeterminate })
+}
+
+// group collapses runs of adjacent matching results that share a verdict and
+// reason. Adjacency is by probe order, which SelectBoundaries already sorts
+// ascending by version.
+//
+// Grouping stops at any version that does not match the predicate: a
+// disagreement at 5.3.1 and another at 8.1.0 with a consistent 6.0.0 between
+// them are two observations, because something changed and changed back.
+func (r *Report) group(match func(Result) bool) []Finding {
+	var out []Finding
+	var cur *Finding
+
+	flush := func() {
+		if cur != nil {
+			out = append(out, *cur)
+			cur = nil
 		}
 	}
+
+	for _, res := range r.Results {
+		if !match(res) {
+			flush()
+			continue
+		}
+		v := res.Signals.Overall()
+		if cur != nil && (cur.Verdict != v || cur.Reason != res.Signals.Reason) {
+			flush()
+		}
+		if cur == nil {
+			cur = &Finding{
+				From:    res.Boundary.Version,
+				Verdict: v,
+				Reason:  res.Signals.Reason,
+			}
+		}
+		cur.To = res.Boundary.Version
+		cur.Versions = append(cur.Versions, res.Boundary.Version)
+		if !contains(cur.Rules, res.Boundary.Rule) {
+			cur.Rules = append(cur.Rules, res.Boundary.Rule)
+		}
+	}
+	flush()
 	return out
 }
 
-// Counts summarises the run.
+func contains(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
+}
+
+// Counts summarises the run. Findings and unknowns are counted as grouped
+// observations; consistent and narrower results are counted per version, since
+// they are not reported individually.
 func (r *Report) Counts() (findings, consistent, narrower, unknown int) {
 	for _, res := range r.Results {
 		switch res.Outcome {
+		case Consistent:
+			consistent++
+		case Narrower:
+			narrower++
+		}
+	}
+	return len(r.Findings()), consistent, narrower, len(r.Unknowns())
+}
+
+// VersionCounts reports the raw per-version tallies, for when the number of
+// probes matters rather than the number of observations.
+func (r *Report) VersionCounts() (disagreements, consistent, narrower, unknown int) {
+	for _, res := range r.Results {
+		switch res.Outcome {
 		case Disagreement:
-			findings++
+			disagreements++
 		case Consistent:
 			consistent++
 		case Narrower:

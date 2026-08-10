@@ -27,8 +27,14 @@ version    fix present?   rule                   outcome
 7.4.1      absent         unmentioned-line       DISAGREEMENT
 8.1.0      absent         unmentioned-line       DISAGREEMENT
 
-findings 4 · consistent 4 · narrower 0 · unknown 3
+findings 1 (4 versions) · consistent 4 · narrower 0 · unknown 1 (3 versions)
+
+FINDING  5.3.1-8.1.0    [unmentioned-line]
+gap      2.10.6-4.1.4   [file_absent]
 ```
+
+Findings are grouped: consecutive probed versions sharing a verdict are one
+structural observation, not one per version. See below.
 
 ### What worked
 
@@ -139,9 +145,12 @@ established a working pipeline and calibrated what its output means.
 
 Three things the run settled:
 
-**The four disagreements were one observation.** Consecutive releases reflecting
-a single change. Reports must group by structural change, not count versions,
-or a single edit reads as four findings.
+**The four disagreements were one observation** — now reported that way. A
+single commit in 4.5.5 explained every one of them, so counting per version
+inflated the report fourfold. Reports group consecutive versions sharing a
+verdict and reason, and stop grouping at any gap, since a construct that
+disappears and returns is two changes rather than one span. Raw per-version
+tallies remain available for when probe count is what matters.
 
 **A guard-shaped spec is fragile by construction.** Matching the absence of
 `asyncio.shield` cannot distinguish "protection removed" from "protection
