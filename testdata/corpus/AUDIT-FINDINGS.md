@@ -46,19 +46,53 @@ before 4.2.x, so the three oldest probes returned `UNKNOWN [file_absent]` and
 the audit continued rather than aborting. Those three are honest gaps, not
 failures.
 
-### The finding that needs a human
+### The finding, and what it turned out to mean — RESOLVED
 
-`asyncio.shield` is **absent from 5.0.1 and every later release**. Verified by
-reading `redis/asyncio/client.py` at v5.0.1: `execute_command` returns to the
-pre-fix shape, calling `conn.retry.call_with_retry` directly with no shield.
+The audit flagged `asyncio.shield` as absent from every 5.x release. Following
+that up by hand produced a more precise answer than the audit could.
 
-That is a genuine structural observation. What it means is not settled:
+**Walking every released tag** and counting occurrences in
+`redis/asyncio/client.py`:
 
-- the guard may have been superseded by a different mechanism in 5.x
-- or the fix may not have carried forward across the major version
+```
+v4.4.4   1 -> 4    fix lands on the 4.4 line
+v4.5.0   4 -> 0    4.5.0 predates the backport
+v4.5.4   1 -> 4    fix lands on the 4.5 line
+v4.5.5   4 -> 0    removed, one release later
+```
 
-Determining which requires reading the 5.x rewrite, and this is exactly the
-"needs review" case the design intends to surface rather than assert.
+The guard did not survive into 5.x because **it was removed in 4.5.5**, the very
+next release after the fix. Across the whole async surface — `client.py`,
+`connection.py`, `cluster.py`, `retry.py` — 4.5.4 has seven occurrences and
+5.0.0 has none. It did not move; it was taken out.
+
+**Why:** the shield caused its own problems. Issue #2722 reports
+`read() called while another coroutine is already waiting for incoming data`
+against 4.5.4 specifically. PR #2695, listed in the 4.5.5 release notes as
+*"Optionally disable disconnects in read_response"*, replaced the approach, and
+its description says the earlier work *"prompted recent changes to async code
+that are not necessary."*
+
+**So 5.x is not unpatched.** The race is addressed by a different mechanism, and
+the advisory's ranges are correct. This was a true observation about the code
+and a false signal about the vulnerability.
+
+### What this cost, and what it is worth
+
+The audit could not have reached this conclusion. It observed an absence; a
+human read four PRs, an issue thread, and a changelog to learn that the absence
+was deliberate and safe.
+
+That is the intended division of labour, but it sets the honest expectation:
+**a disagreement is a reading assignment, not a finding.** Had this been filed
+as an advisory correction on the strength of the audit alone, it would have been
+wrong, and wrong in public against a maintainer.
+
+It also sharpens a design point. Matching on a *guard* rather than a *danger* is
+fragile precisely because guards get replaced: the construct disappearing means
+"this specific implementation is gone", not "the protection is gone". Specs with
+`indicates: fixed` should be read with that in mind, and preferred only when no
+danger-shaped rule is available.
 
 ## Two problems this run exposed
 
@@ -96,19 +130,31 @@ error.
 ## Status against the plan
 
 The product thesis is no longer untested. The engine drove a real advisory's
-boundaries, located both backported fixes unaided, classified every in-range
-version consistently with the advisory, and surfaced four versions where the
-guard is absent.
+boundaries, located both backported fixes unaided, and classified every in-range
+version consistently with the advisory.
 
-Two honest caveats on that result.
+It also produced four disagreements that a human resolved to *not a finding*.
+That is a useful result rather than a disappointing one — the first real audit
+established a working pipeline and calibrated what its output means.
 
-**The four disagreements are one observation, not four.** They are consecutive
-releases in the 5.x-and-later lines, all reflecting the same structural change.
-A report that counted them as four findings would overstate what was found.
+Three things the run settled:
 
-**A disagreement is not yet a correction.** The engine established that
-`asyncio.shield` is absent from 5.x; it did not establish that 5.x is
-vulnerable. The 5.x rewrite may guard the same race differently. Filing this as
-an advisory correction without reading that rewrite is exactly the false
-disagreement the design warns about — the tool's job here is to point a human at
-four versions worth reading, and it did that.
+**The four disagreements were one observation.** Consecutive releases reflecting
+a single change. Reports must group by structural change, not count versions,
+or a single edit reads as four findings.
+
+**A guard-shaped spec is fragile by construction.** Matching the absence of
+`asyncio.shield` cannot distinguish "protection removed" from "protection
+reimplemented", and here it was the latter. Prefer danger-shaped rules; use
+`indicates: fixed` only when nothing else is available, and treat its
+disagreements as weaker evidence.
+
+**Zero under-reports held.** Nothing affected was reported safe, on either the
+in-range versions or the follow-up investigation.
+
+## Next
+
+The engine has now been exercised end to end on one advisory. A second
+multi-branch case is needed before the boundary rules can be trusted to
+generalise — particularly the `unmentioned-line` rule, whose only outing so far
+produced four true-but-immaterial disagreements.
