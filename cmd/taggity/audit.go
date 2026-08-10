@@ -53,6 +53,11 @@ Flags:
 	if err != nil {
 		return err
 	}
+	// Before the clone, so a mismatch fails immediately rather than after a
+	// network fetch.
+	if err := audit.CheckAdvisoryMatch(sp.Advisory, adv.ID); err != nil {
+		return err
+	}
 
 	repo, err := git.OpenOrClone(sp.Repo)
 	if err != nil {
