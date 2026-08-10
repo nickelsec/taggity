@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -59,7 +60,7 @@ Flags:
 	}
 	if *specPath == "" || *advPath == "" {
 		fs.Usage()
-		return fmt.Errorf("--spec and --advisory are both required")
+		return errors.New("--spec and --advisory are both required")
 	}
 
 	sp, err := spec.Load(*specPath)

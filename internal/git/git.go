@@ -20,6 +20,8 @@ import (
 
 // ---------- repo URL normalization ----------
 
+// NormalizeRepoURL reduces any GitHub URL to its canonical clone target.
+//
 // Declared PyPI URLs are frequently NOT clone targets: observed in the wild are
 // .../issues, .../releases, and .../blob/main/CHANGES.rst.
 func NormalizeRepoURL(raw string) (string, error) {
@@ -42,6 +44,7 @@ func NormalizeRepoURL(raw string) (string, error) {
 
 // ---------- PEP 440 (the subset that matters for tag matching) ----------
 
+// Version is the subset of PEP 440 needed to order and match release tags.
 type Version struct {
 	Epoch    int
 	Release  []int
@@ -57,6 +60,7 @@ var verRe = regexp.MustCompile(
 		`(?:[-_.]?(post|rev|r)[-_.]?(\d*))?` +
 		`(?:[-_.]?(dev)[-_.]?(\d*))?$`)
 
+// ParseVersion parses a PEP 440 version string, reporting whether it is valid.
 func ParseVersion(s string) (Version, bool) {
 	v := Version{Post: -1, Dev: -1, Original: s}
 	t := strings.ToLower(strings.TrimSpace(s))
@@ -68,7 +72,7 @@ func ParseVersion(s string) (Version, bool) {
 	if m[1] != "" {
 		v.Epoch, _ = strconv.Atoi(m[1])
 	}
-	for _, p := range strings.Split(m[2], ".") {
+	for p := range strings.SplitSeq(m[2], ".") {
 		n, err := strconv.Atoi(p)
 		if err != nil {
 			return v, false
@@ -128,18 +132,17 @@ func (v Version) Key() string {
 	return k
 }
 
+// IsPrerelease reports whether v is a pre-release or development version.
 func (v Version) IsPrerelease() bool { return v.Pre != "" || v.Dev >= 0 }
 
-// Compare returns -1, 0, or 1.
-func (a Version) Compare(b Version) int {
+// Compare returns -1, 0, or 1 as v sorts before, with, or after other.
+func (v Version) Compare(other Version) int {
+	a, b := v, other
 	if a.Epoch != b.Epoch {
 		return sign(a.Epoch - b.Epoch)
 	}
-	n := len(a.Release)
-	if len(b.Release) > n {
-		n = len(b.Release)
-	}
-	for i := 0; i < n; i++ {
+	n := max(len(a.Release), len(b.Release))
+	for i := range n {
 		if at(a.Release, i) != at(b.Release, i) {
 			return sign(at(a.Release, i) - at(b.Release, i))
 		}
@@ -188,11 +191,13 @@ func sign(n int) int {
 
 // ---------- repo ----------
 
+// Repo is a bare clone of a package's source repository.
 type Repo struct {
 	Dir  string
 	repo *git.Repository
 }
 
+// CacheDir returns the on-disk location of the bare clone for normURL.
 func CacheDir(normURL string) string {
 	base, err := os.UserCacheDir()
 	if err != nil {
@@ -212,8 +217,10 @@ func OpenOrClone(rawURL string) (*Repo, error) {
 	if r, err := git.PlainOpen(dir); err == nil {
 		return &Repo{Dir: dir, repo: r}, nil
 	}
-	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
-		return nil, err
+	// 0o750: the cache holds clones of public repositories, but it lives under
+	// the user's home directory and nothing else needs to read it.
+	if err := os.MkdirAll(filepath.Dir(dir), 0o750); err != nil {
+		return nil, fmt.Errorf("creating cache directory: %w", err)
 	}
 	r, err := git.PlainClone(dir, true, &git.CloneOptions{URL: norm, Tags: git.AllTags})
 	if err != nil {
@@ -222,6 +229,7 @@ func OpenOrClone(rawURL string) (*Repo, error) {
 	return &Repo{Dir: dir, repo: r}, nil
 }
 
+// TagRef is one repository tag with its resolved commit and parsed version.
 type TagRef struct {
 	Name   string
 	Commit string
@@ -233,7 +241,7 @@ type TagRef struct {
 func (r *Repo) Tags() (map[string]TagRef, []TagRef, error) {
 	iter, err := r.repo.Tags()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("listing tags: %w", err)
 	}
 	byKey := map[string]TagRef{}
 	var all []TagRef
@@ -260,8 +268,11 @@ func (r *Repo) Tags() (map[string]TagRef, []TagRef, error) {
 		}
 		return nil
 	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("walking tags: %w", err)
+	}
 	sort.Slice(all, func(i, j int) bool { return all[i].Ver.Compare(all[j].Ver) < 0 })
-	return byKey, all, err
+	return byKey, all, nil
 }
 
 var tagPrefixes = []string{

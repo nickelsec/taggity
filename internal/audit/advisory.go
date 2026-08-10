@@ -9,6 +9,7 @@ package audit
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 )
@@ -45,6 +46,7 @@ type Event struct {
 
 // LoadAdvisory reads an OSV JSON document.
 func LoadAdvisory(path string) (*Advisory, error) {
+	// #nosec G304 -- the path is the advisory the user asked to audit.
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading advisory: %w", err)
@@ -54,13 +56,13 @@ func LoadAdvisory(path string) (*Advisory, error) {
 		return nil, fmt.Errorf("parsing advisory: %w", err)
 	}
 	if a.ID == "" {
-		return nil, fmt.Errorf("advisory has no id")
+		return nil, errors.New("advisory has no id")
 	}
 	return &a, nil
 }
 
-// ClaimedRanges returns the ranges asserted for one package, flattened into
-// introduced/fixed pairs. An open range (introduced with no fixed) yields an
+// Claim is one asserted range for a package, flattened into an
+// introduced/fixed pair. An open range (introduced with no fixed) yields an
 // empty Fixed.
 type Claim struct {
 	Introduced string

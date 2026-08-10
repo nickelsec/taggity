@@ -108,7 +108,10 @@ func TestExportRecordsMatcherVersion(t *testing.T) {
 	rep := &audit.Report{AdvisoryID: "GHSA-test"}
 	doc := buildOSV(rep, testSpec(""))
 
-	ts := doc.Affected[0].DatabaseSpecifc["taggity"].(map[string]any)
+	ts, ok := doc.Affected[0].DatabaseSpecifc["taggity"].(map[string]any)
+	if !ok {
+		t.Fatal("provenance block missing")
+	}
 	// A parser upgrade can change verdicts, so a verdict is only reproducible
 	// alongside the version that produced it.
 	if ts["matcher_version"] == "" || ts["matcher"] == "" {

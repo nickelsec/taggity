@@ -114,6 +114,8 @@ type Alias struct {
 
 // Load reads and validates a spec file.
 func Load(path string) (*Spec, error) {
+	// #nosec G304 -- the path is the spec the user asked to run; reading an
+	// operator-supplied file is what this function is for.
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading spec: %w", err)

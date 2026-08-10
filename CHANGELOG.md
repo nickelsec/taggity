@@ -24,5 +24,24 @@ earned one yet.
 - Working CLI: `check`, `audit`, `init`, and `export`.
 - `export` records unreviewed disagreements separately from established
   versions, so an unresolved observation is never published as a claim.
+- `Report.Overclaims()`, rendered as `CLAIMED BUT NOT OBSERVED`. Versions the
+  advisory claims are affected but where the engine found the fix are shown
+  rather than reduced to a count. They remain excluded from findings and from
+  export.
+
+### Fixed
+
+- The audit report could print `0 finding(s)` for an advisory that was
+  demonstrably wrong. Under an `indicates: fixed` rule, an over-claimed version
+  classifies as `narrower-than-claimed`, which was never rendered. Found while
+  auditing GHSA-wxj7-3fx5-pp9m.
+- `Repo.Tags` discarded the error returned by the tag iterator.
+- Cache directories are created 0750 rather than 0755.
+
+### Changed
+
+- `.golangci.yaml` disables now cover the whole `default: all` set, each with a
+  reason. The first real run reported 203 issues; the remainder were fixed.
+  `golangci-lint` and `gosec` both report clean.
 
 [Unreleased]: https://github.com/nickelsec/taggity/commits/main

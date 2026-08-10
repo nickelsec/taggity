@@ -19,6 +19,32 @@ linters:
     - wsl             # stylistic whitespace rules
     - wsl_v5          # ditto
 
+    # Terminal output is the product. Checking every fmt.Fprintf into a report
+    # writer would bury the reporting code in error handling for a failure mode
+    # (a broken stdout) that the CLI cannot act on anyway. Errors that matter --
+    # writing OSV to a file, reading a spec -- are checked explicitly.
+    - errcheck
+    # Sentinel error types for CLI-level messages would be indirection with one
+    # caller. Library errors that a caller might branch on are wrapped with %w.
+    - err113
+    - noinlineerr    # `if err := f(); err != nil` is idiomatic Go
+    - wrapcheck      # %w wrapping is applied where context helps, not blanket
+    # Every test here touches a shared on-disk clone cache or a tree-sitter
+    # parser; making them parallel would be a correctness change, not a style
+    # one, and the suite already runs in seconds.
+    - paralleltest
+    - testpackage    # invariant_test.go must see unexported package internals
+    # The corpus tests repeat version strings and advisory IDs deliberately:
+    # each is evidence tied to one case, and hoisting them into constants would
+    # make the assertions harder to read against the published advisory.
+    - goconst
+    - dogsled        # `_, _, err :=` reads fine against multi-value APIs
+    - tagliatelle    # OSV field names are fixed by the schema, not by us
+    - funcorder      # exported/unexported ordering is grouped by topic here
+    - godoclint      # comment style is enforced by review, not by pattern
+
+    - gomodguard     # superseded by gomodguard_v2, which `default: all` enables
+
   enable:
     - depguard
 
@@ -55,6 +81,10 @@ linters:
       enable-all: true
       disable:
         - fieldalignment  # readability wins over struct packing here
+        # `if err := f(); err != nil` scopes err to the branch that handles it,
+        # which is idiomatic Go and narrower than the alternative. Rewriting to
+        # satisfy this check would widen the scope it objects to.
+        - shadow
 
 formatters:
   enable:
