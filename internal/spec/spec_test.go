@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/nickelsec/taggity/internal/spec"
 )
 
@@ -191,7 +193,7 @@ func TestLoadMissingFileNamesTheProblem(t *testing.T) {
 // The forward-compatibility fields must already round-trip. A spec written
 // today should not need migrating when model-assisted authoring arrives, and
 // the only way to know that holds is to parse one.
-func TestAuthoringAndAliasesRoundTrip(t *testing.T) {
+func TestAuthoringRoundTrips(t *testing.T) {
 	src := minimal + `
 authoring:
   mode: ai
@@ -199,15 +201,6 @@ authoring:
   model: claude-opus-4
   reviewed_by: nick
 `
-	src = strings.Replace(src,
-		"      calls: eval",
-		"      calls: eval\n    aliases:\n"+
-			"      - symbol: Alpha.parse_untrusted\n"+
-			"        versions: \"<1.0.0\"\n"+
-			"        source: llm\n"+
-			"        confidence: 0.8\n"+
-			"        approved_by: nick", 1)
-
 	s, err := spec.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("v0.2.0 fields rejected by the v0.1.0 parser: %v", err)
@@ -215,11 +208,75 @@ authoring:
 	if s.Authoring.Mode != "ai" || s.Authoring.ReviewedBy != "nick" {
 		t.Errorf("authoring lost: %+v", s.Authoring)
 	}
+	if s.Authoring.Provider != "anthropic" || s.Authoring.Model != "claude-opus-4" {
+		t.Errorf("model provenance lost: %+v", s.Authoring)
+	}
+}
+
+const withAliases = `      calls: eval
+    aliases:
+      - symbol: Alpha.parse_untrusted
+        versions: "<1.0.0"
+        source: llm
+        confidence: 0.8
+        approved_by: nick`
+
+// The alias schema must survive a v0.1.0 parser structurally, so a v0.2.0 spec
+// needs no migration. Forward compatibility is about the shape of the document,
+// not about whether this release acts on it.
+func TestAliasSchemaStillParses(t *testing.T) {
+	src := strings.Replace(minimal, "      calls: eval", withAliases, 1)
+
+	var s spec.Spec
+	if err := yaml.Unmarshal([]byte(src), &s); err != nil {
+		t.Fatalf("alias schema does not parse: %v", err)
+	}
 	if len(s.Signal.Code.Aliases) != 1 {
 		t.Fatalf("aliases lost: %+v", s.Signal.Code.Aliases)
 	}
 	if a := s.Signal.Code.Aliases[0]; a.Source != "llm" || a.Confidence != 0.8 {
 		t.Errorf("alias provenance lost: %+v", a)
+	}
+}
+
+// Nothing reads aliases in v0.1.0, so accepting one would discard a field the
+// author wrote specifically to prevent a symbol_not_found UNKNOWN — and then
+// report that UNKNOWN. Rejecting is the only option that does not silently
+// produce the outcome the alias existed to avoid.
+func TestValidateRejectsAliasesRatherThanIgnoringThem(t *testing.T) {
+	src := strings.Replace(minimal, "      calls: eval", withAliases, 1)
+
+	_, err := spec.Parse([]byte(src))
+	if err == nil {
+		t.Fatal("a spec with aliases loaded; the field is not evaluated, so " +
+			"accepting it would discard the author's input silently")
+	}
+	if !strings.Contains(err.Error(), "aliases") {
+		t.Errorf("error must name the field, got: %v", err)
+	}
+	// The message has to say what to do instead, not just that it failed.
+	if !strings.Contains(err.Error(), "symbol") {
+		t.Errorf("error should point at qualifying the symbol, got: %v", err)
+	}
+}
+
+// taggity init writes a spec and validates it before emitting. If the zero-value
+// Aliases slice ever marshalled as `aliases: []`, init would produce output that
+// fails its own validator.
+func TestSpecWithoutAliasesEmitsNoAliasKey(t *testing.T) {
+	s, err := spec.Parse([]byte(minimal))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := yaml.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "aliases") {
+		t.Errorf("empty aliases marshalled into the document:\n%s", out)
+	}
+	if _, err := spec.Parse(out); err != nil {
+		t.Errorf("a marshalled spec no longer loads: %v", err)
 	}
 }
 
