@@ -28,7 +28,7 @@ const (
 //
 // Verifying an entire range is unnecessary: a range is an assertion about its
 // edges, and the interior follows. Four rules cover the ways an edge can be
-// misplaced, and the fourth is where findings actually come from — an advisory
+// misplaced, and the fourth is where findings actually come from. An advisory
 // that discusses only 2.x is silent about whether 1.8.x was ever patched, and
 // that silence is exactly how backported fixes get missed.
 func SelectBoundaries(claims []Claim, available []git.TagRef) []Boundary {
@@ -85,13 +85,10 @@ func SelectBoundaries(claims []Claim, available []git.TagRef) []Boundary {
 			}
 			if maj, ok := majorOf(c.Fixed); ok {
 				mentioned[maj] = true
-				// "introduced: 0" means every release before Fixed, not just
-				// Fixed's own line. Marking only the literal major left every
-				// earlier line looking like silence, so an advisory that
-				// already covers them reported them as disagreements. On
-				// PYSEC-2026-564 that was twelve false findings from a claim
-				// reading "< 12.0.1", each one a version the advisory does
-				// warn about.
+				// "introduced: 0" covers every release before Fixed, not just
+				// Fixed's own line. Marking the literal major alone would leave
+				// each earlier line looking unmentioned, and the rule below
+				// would probe versions the advisory already warns about.
 				if c.Introduced == "" || c.Introduced == "0" {
 					for m := range maj {
 						mentioned[m] = true

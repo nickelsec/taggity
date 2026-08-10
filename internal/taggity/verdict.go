@@ -11,7 +11,7 @@ package taggity
 type Verdict uint8
 
 const (
-	// Unevaluated means the signal was never run. It renders as "—" and is
+	// Unevaluated means the signal was never run. It renders as "," and is
 	// never a pass.
 	Unevaluated Verdict = iota
 

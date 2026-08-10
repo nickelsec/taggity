@@ -18,7 +18,7 @@ builds:
     binary: taggity
 
     # A hard constraint, not a preference: `go install` must work without a C
-    # toolchain. Nothing in the tree needs cgo — go-git and gotreesitter are
+    # toolchain. Nothing in the tree needs cgo: go-git and gotreesitter are
     # both pure Go, which is why gotreesitter was chosen in the first place.
     env:
       - CGO_ENABLED=0

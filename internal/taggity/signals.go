@@ -2,7 +2,7 @@ package taggity
 
 // Signals is the result of checking one version. All three slots exist from the
 // first release so that later signals add implementations rather than reshaping
-// this type; unimplemented ones stay Unevaluated and render as "—".
+// this type; unimplemented ones stay Unevaluated and render as ",".
 //
 // A signal that was never run must never look like evidence of safety, which is
 // why there is no boolean anywhere in this type.

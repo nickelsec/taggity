@@ -2,7 +2,7 @@
 // source actually contains.
 //
 // It does not verify a whole range. It probes the edges where a claim would be
-// wrong — the version below each introduced, each fixed version, and the newest
+// wrong: the version below each introduced, each fixed version, and the newest
 // release on branches the advisory never mentions. Six checks answer the
 // question that fifty would, which is what makes auditing at scale possible.
 package audit
@@ -70,8 +70,9 @@ var ErrAdvisoryMismatch = errors.New("spec and advisory disagree")
 // this one.
 //
 // This is an error rather than a warning because the result of ignoring it is a
-// confident report about the wrong advisory — and in export, a machine-readable
-// OSV document carrying one advisory's ID over another's findings. A warning on
+// confident report about the wrong advisory. In export it is worse: a
+// machine-readable OSV document carrying one advisory's ID over another's
+// findings. A warning on
 // stderr is invisible in a pipeline, which is where these commands run.
 func CheckAdvisoryMatch(specAdvisory, advisoryID string) error {
 	if specAdvisory == "" || specAdvisory == advisoryID {

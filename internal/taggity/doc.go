@@ -17,9 +17,9 @@ presence check, when the symbol was found and the vulnerable construct was
 not. Absence of the construct is the only genuinely negative evidence
 available.
 
-Every other path — no tag, missing file, unparseable version, unresolved
-symbol, ambiguous symbol, parse failure — returns [Unknown]. A failure to
-answer is not evidence of safety.
+Every other path returns [Unknown]: no tag, missing file, unparseable version,
+unresolved symbol, ambiguous symbol, parse failure. A failure to answer is not
+evidence of safety.
 
 This invariant is enforced mechanically by TestNotVulnerableAssignedOnce, not
 by review. If a second assignment is ever needed, the test must be changed

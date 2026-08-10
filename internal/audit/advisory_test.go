@@ -9,7 +9,7 @@ import (
 )
 
 // Auditing a spec against an advisory it does not name produces a confident
-// report about the wrong thing — and in export, an OSV document stamped with
+// report about the wrong thing. In export it is an OSV document stamped with
 // one advisory's ID over another's findings. That has to fail, not warn.
 func TestCheckAdvisoryMatch(t *testing.T) {
 	cases := []struct {

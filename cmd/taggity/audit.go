@@ -31,7 +31,7 @@ what keeps an audit to a handful of checks rather than dozens.
 
 A DISAGREEMENT is a reading assignment, not a conclusion. It means the advisory
 implies a version is safe and the construct is present, which is worth a
-human's attention — not a correction to file unread.
+human's attention, not a correction to file unread.
 
 Flags:
 `)
@@ -116,7 +116,7 @@ func printAudit(w io.Writer, rep *audit.Report, sp *spec.Spec, tagCount int, ver
 	// Shown, but kept out of DISAGREEMENTS and out of export: this direction
 	// says the advisory claims more than the engine can see, which is usually
 	// the spec's blind spot rather than the advisory's error. It still has to be
-	// visible — with an inverted-polarity rule this is where a genuine
+	// visible, with an inverted-polarity rule this is where a genuine
 	// over-claim lands, and a bare count in the summary reads as nothing found.
 	if over := rep.Overclaims(); len(over) > 0 {
 		fmt.Fprintf(w, "\n  CLAIMED BUT NOT OBSERVED (needs review, not a finding)\n")

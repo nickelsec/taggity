@@ -2,7 +2,7 @@
 //
 // Matching is done on the parse tree rather than on text. An early prototype
 // searched the symbol's byte span for the target string and was wrong on three
-// of six adversarial cases — it counted `eval(` appearing in a comment, in a
+// of six adversarial cases. It counted `eval(` appearing in a comment, in a
 // docstring, and inside a nested function. Those are over-reports, which the
 // project tolerates in principle, but an over-report here becomes a public
 // claim that a maintainer's advisory is wrong.

@@ -29,7 +29,7 @@ var version = ""
 // Without the fallback, `go install github.com/nickelsec/taggity/cmd/taggity@v0.1.0`
 // reports "dev": that path cannot pass ldflags. Every bug report from an
 // installed binary would then be unattributable to a release, which matters
-// more here than usual — a verdict is only reproducible alongside the version
+// more here than usual, a verdict is only reproducible alongside the version
 // that produced it.
 func resolveVersion() string {
 	if version != "" {

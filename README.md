@@ -1,7 +1,6 @@
 # taggity
 
 [![CI](https://github.com/nickelsec/taggity/actions/workflows/ci.yml/badge.svg)](https://github.com/nickelsec/taggity/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 ```
   ◇──◇──◆──◆──◇
@@ -11,13 +10,17 @@
   testing where it breaks.
 ```
 
-Audits published vulnerability advisories and finds where their affected
-version ranges are wrong.
+Checks whether a published advisory's affected version range matches the source.
 
-> **v0.1.0 — the deterministic engine.** Audited against three real
-> multi-branch advisories. Read [Limitations](#limitations) before relying on
-> it: the corpus is three advisories, not an ecosystem, and one rule kind, not a
-> vocabulary.
+Advisories get version ranges wrong regularly. A fix gets backported to 2.x but
+not 1.x, and the advisory only mentions 2.x. Or the range is copied from a
+release note that was already wrong. In `github/advisory-database` there are 99
+merged pull requests mentioning backports, most of them corrections someone
+worked out by hand.
+
+taggity answers one question, repeatably: does this exact version contain this
+exact construct? Point it at an advisory and it probes the versions where the
+claimed range would be wrong.
 
 ## Install
 
@@ -25,42 +28,18 @@ version ranges are wrong.
 go install github.com/nickelsec/taggity/cmd/taggity@latest
 ```
 
-Or take a binary from
-[Releases](https://github.com/nickelsec/taggity/releases) — each ships with
-`checksums.txt` and an SBOM.
+Binaries for Linux, macOS and Windows are on the
+[releases page](https://github.com/nickelsec/taggity/releases), with checksums
+and an SBOM. Pure Go, no cgo, so nothing needs a C compiler.
 
-Pure Go with no cgo, so `go install` needs no C toolchain and the binaries are
-static.
+## How it works
 
-## The problem
-
-Filing a vulnerability report means stating which versions are affected. Working
-that out accurately is manual archaeology — trace the fix commit, map it to
-tags, check whether the fix was backported to every maintenance branch. Because
-it is expensive, people guess, and "version X and earlier" is usually wrong.
-
-The errors are real and measurable. In `github/advisory-database` there are
-**108 merged pull requests correcting affected version ranges** and **99
-mentioning backports**. One React Router advisory drew four separate corrections
-from four different people, each doing the same archaeology by hand. A
-django-haystack advisory shipped with the literal string `eval()` where its
-version range should have been — visible to humans, inert to every scanner.
-
-Wrong ranges are not cosmetic. A version wrongly marked safe is a version whose
-users are never told to upgrade.
-
-## What taggity does
-
-It answers one question, reproducibly:
-
-> Does this exact version contain this exact vulnerable construct?
-
-Given a spec, it resolves the version to a commit, parses the source, and
-reports `VULNERABLE`, `NOT_VULNERABLE`, or `UNKNOWN` — with evidence detailed
-enough for someone else to re-derive the answer by hand.
+You write a spec describing the vulnerable construct:
 
 ```yaml
-package: { ecosystem: PyPI, name: examplepkg }
+package:
+  ecosystem: PyPI
+  name: examplepkg
 repo: https://github.com/example/examplepkg
 advisory: GHSA-xxxx-yyyy-zzzz
 
@@ -68,132 +47,109 @@ signal:
   code:
     file: src/parser.py
     symbol: Alpha.parse_untrusted
-    rule: { calls: eval }
+    rule:
+      calls: eval
 ```
 
-Running that against an advisory's boundary versions surfaces disagreements: a
-range claiming `>= 2.0.0` while the vulnerable code is still present in 1.9.x
-because the fix was never backported.
-
-## Usage
+Then run it against a version, or against a whole advisory:
 
 ```sh
-# Check one version.
-taggity check redis@4.5.4 --spec spec.yaml
+taggity check redis@4.5.3 --spec spec.yaml
 
-# Audit an advisory's boundaries. A range is an assertion about its edges, so
-# only those are probed — 11 checks against redis-py's 157 tags.
-taggity audit --spec spec.yaml --advisory GHSA-8fww-64cx-x8p5.json
-
-# Scaffold a spec.
-taggity init --repo https://github.com/redis/redis-py --package redis \
-  --file redis/asyncio/client.py --symbol Redis.execute_command --calls eval
-
-# Emit OSV for what the audit established.
-taggity export --spec spec.yaml --advisory GHSA-8fww-64cx-x8p5.json
+taggity audit --spec testdata/corpus/GHSA-8fww-64cx-x8p5.yaml \
+  --advisory testdata/corpus/GHSA-8fww-64cx-x8p5.json
 ```
 
-A real audit reads like this:
+An audit looks like this:
 
 ```
 GHSA-8fww-64cx-x8p5  redis
   claims  >= 4.5.0, < 4.5.4
   claims  >= 4.2.0, < 4.4.4
+  rule    calls: asyncio.shield (indicates: fixed) in Redis.execute_command
+          (matches the FIX; a match means the fix is present)
   probed  11 of 157 tags
 
   DISAGREEMENTS
-    5.3.1–8.1.0      NOT_VULNERABLE  [unmentioned-line]
+    5.3.1-8.1.0      NOT_VULNERABLE  [unmentioned-line]
 
   GAPS (could not answer)
-    2.10.6–4.1.4     [file_absent]
+    2.10.6-4.1.4     [file_absent]
 
-  1 finding(s) across 4 versions · 4 consistent · 0 narrower · 1 gap(s)
+  1 finding(s) across 4 versions · 4 consistent · 0 narrower · 1 gap(s) across 3 versions
 ```
 
-Findings are grouped by structural change rather than counted per version. One
-edit shows up at every release after it, so counting versions would inflate a
-report by however many happened to be probed.
+A range is a claim about its edges, so only the edges get probed. That is 11
+checks against redis-py's 157 tags instead of 157.
 
-**A disagreement is a reading assignment, not a conclusion.** The example above
-was investigated by hand and turned out to be correct behaviour: the guard was
-deliberately removed one release after the fix and replaced with a different
-mechanism. `taggity export` records unreviewed disagreements separately from
-established versions for exactly this reason — it will not publish one as fact.
+A disagreement is something to go read, not a correction to file. The one above
+was investigated by hand and turned out to be fine: the guard was deliberately
+removed a release after the fix and replaced with a different mechanism.
+`taggity export` keeps unreviewed disagreements out of its OSV output for that
+reason.
 
-The second advisory audited did hold up. GHSA-wxj7-3fx5-pp9m claims MLflow
-`>= 3.0.0rc0, < 3.1.0` is affected by an SSRF and lists `3.0.0` and `3.0.1`
-among the affected versions, but the fix commit is reachable from `v3.0.0` —
-only the release candidates predate it. The range should end at the last rc.
+`taggity init` will scaffold a spec if you would rather not write the YAML by
+hand.
 
-Staying quiet matters as much as finding that. PYSEC-2026-564 patches an `eval`
-injection in OpenStack Vitrage across four maintenance branches and is correct at
-every boundary; taggity locates all four backported fixes and reports nothing.
-That case is in the corpus precisely because a tool only ever exercised on wrong
-advisories has never shown it stays silent on right ones — and it immediately
-caught a boundary-selection bug that had been manufacturing false findings.
+## Three-valued verdicts
 
-Full write-ups: [testdata/corpus/AUDIT-FINDINGS.md](testdata/corpus/AUDIT-FINDINGS.md).
+Verdicts are `VULNERABLE`, `NOT_VULNERABLE`, or `UNKNOWN`.
 
-## Reproducibility, not confidence
+`UNKNOWN` is an answer. Going backwards through history a symbol gets renamed,
+a file moves, code gets refactored, and the construct stops matching for
+reasons that have nothing to do with the vulnerability. A tool that reports
+"not vulnerable" there is confidently wrong in the direction that gets someone
+compromised, so taggity says it could not tell and gives a reason code.
 
-There is no reliable ground truth here. NVD and GHSA are themselves frequently
-wrong, and independent tools disagree on the same vulnerability with no arbiter.
-A tool emitting `VULNERABLE (confidence: 92%)` would be making a claim no
-experiment could falsify.
+Wrongly flagging a version is recoverable; a maintainer disputes it and the
+range narrows. Wrongly clearing one means a scanner stays quiet. Exactly one
+code path in the repository can conclude `NOT_VULNERABLE`, and
+`internal/taggity/invariant_test.go` walks the AST to keep it that way.
 
-So taggity does not claim to be right. It claims to be **reproducible**: here is
-exactly what was checked, here is how to repeat it, here is where it was
-uncertain. Every finding ships with the command that reproduces it.
+Matching runs on a real parser
+([gotreesitter](https://github.com/odvcencio/gotreesitter)), so `eval(` in a
+comment, a docstring or a nested function is not a call. An early prototype
+used substring matching and was wrong on three of six adversarial cases while
+looking entirely correct.
 
-## Design
+## What it does not do
 
-**`UNKNOWN` is a real answer.** When a symbol has been refactored away or a
-version has no matching tag, the honest output is "I could not determine this",
-not a guess. `UNKNOWN` versions are excluded from exported OSV rather than
-assumed safe.
+- PyPI only. `package.ecosystem` is recorded and echoed into exported OSV, but
+  nothing dispatches on it. There is one code path and it assumes Python.
+- One rule kind, `calls`. It covers `eval`, `exec`, `pickle.loads`,
+  `os.system` and similar sinks. It cannot express a changed default argument,
+  which is how PyYAML's `yaml.load` was fixed, and anything it cannot express
+  is `UNKNOWN`.
+- Needs a git repository. No repo, no answer.
+- Assumes the tag is what was published. Uploads from a dirty tree and
+  untagged hotfixes are invisible.
+- Does not resolve aliased imports. `from pickle import loads; loads(x)` will
+  not match `calls: pickle.loads`.
+- `signal.code.aliases` is reserved. It parses, so specs written now will not
+  need migrating, but nothing evaluates it and a spec that sets it is rejected
+  rather than silently ignored.
+- No execution and no reachability analysis. Code being present is not the same
+  as it being exploitable.
+- `check` exits 0 even when the verdict is `VULNERABLE`. The exit status says
+  whether the run worked, not what it found, so that a loop over versions is
+  usable. Read the verdict on stdout, or pass `--quiet` to get it alone.
 
-**Under-reporting is the only unacceptable failure.** Wrongly flagging a version
-is recoverable — a maintainer disputes it and the range narrows. Wrongly
-clearing one means a scanner stays silent. Exactly one code path in this
-repository can conclude `NOT_VULNERABLE`, and a test enforces that structurally.
-
-**Verdicts are structural, not textual.** Matching uses a real parser
-([gotreesitter](https://github.com/odvcencio/gotreesitter), pure Go, no cgo), so
-`eval(` in a comment, a docstring, or a nested function does not count as a
-call. An early prototype used substring matching and was wrong on three of six
-adversarial cases while looking entirely correct.
-
-## Limitations
-
-Stated plainly, because a tool that overclaims here is worse than no tool.
-
-- **PyPI only.** The ecosystem interface exists; npm is next.
-- **One rule type: `calls`.** Everything else returns `UNKNOWN`. This covers
-  `eval`, `exec`, `pickle.loads`, `os.system`, and similar sinks, but not
-  vulnerabilities that are not call-shaped. PyYAML's `yaml.load` fix changed a
-  default argument rather than a call, and `calls` cannot express that.
-- **Guard-shaped fixes need inverted polarity.** Both multi-branch advisories
-  audited so far were fixed by *adding* a check rather than removing a dangerous
-  call, so their specs set `indicates: fixed` and their verdicts read backwards.
-  That works, but it is the fragile direction: a guard disappearing may mean it
-  was reimplemented, not removed.
-- **A git repository is required.** Missing or unreachable means a hard error,
-  never a verdict.
-- **The tag is assumed to be what was published.** Uploads from a dirty tree and
-  untagged hotfixes are not detected.
-- **Aliased imports are not resolved.** `from pickle import loads; loads(x)`
-  will not match `calls: pickle.loads`.
-- **No execution, no reachability analysis.** Code presence is not
-  exploitability.
+Some fixes add a guard rather than removing a dangerous call. Those specs set
+`indicates: fixed` and their verdicts read inverted. It works, but it is the
+weaker direction: a guard that disappears may have been reimplemented rather
+than removed.
 
 ## Development
 
 ```sh
-make test         # hermetic tests, no network
-make test-corpus  # clones real repositories; reproduces every claim above
+make test         # hermetic, no network
+make test-corpus  # clones real repositories and checks against real advisories
 make lint
 make build
 ```
+
+The corpus lives in `testdata/corpus/` alongside notes on what each case
+established. `make test-corpus` is what reproduces the results above.
 
 ## License
 

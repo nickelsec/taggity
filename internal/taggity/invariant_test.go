@@ -26,8 +26,8 @@ func repoRoot(t *testing.T) string {
 // exactly one place in the repository may conclude NotVulnerable.
 //
 // Absence of the vulnerable construct is the only genuinely negative evidence
-// available. Every other failure to answer — no tag, missing file, unresolved
-// symbol, ambiguous symbol, parse error — must return Unknown. Collapsing any
+// available. Every other failure to answer, no tag, missing file, unresolved
+// symbol, ambiguous symbol, parse error, must return Unknown. Collapsing any
 // of those into NotVulnerable would under-report, which is the one failure mode
 // this project treats as unacceptable.
 //
@@ -129,7 +129,7 @@ func TestNotVulnerableAssignedOnce(t *testing.T) {
 
 	// Four references in this package are structural rather than conclusions
 	// about a version: the constant declaration, its String case, and the two
-	// mentions in Signals.Overall. The fifth is the real one — the single
+	// mentions in Signals.Overall. The fifth is the real one, the single
 	// assignment in predicate.Calls, reached only when the symbol was found and
 	// no qualifying call exists inside it.
 	//
