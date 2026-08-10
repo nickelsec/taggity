@@ -171,6 +171,16 @@ func (s *Spec) Validate() error {
 }
 
 // RuleString renders the rule for evidence records.
+//
+// Polarity is part of the rule, not a footnote. The same target means opposite
+// things under the two polarities — "calls asyncio.shield" is the danger in one
+// spec and the fix in another — and this string is the only statement of what
+// was asked that reaches an evidence record or an exported OSV document. A
+// reader who cannot tell which question was asked cannot reproduce the answer.
 func (s *Spec) RuleString() string {
-	return "calls: " + s.Signal.Code.Rule.Calls
+	r := "calls: " + s.Signal.Code.Rule.Calls
+	if !s.Signal.Code.Rule.MatchMeansVulnerable() {
+		return r + " (indicates: fixed)"
+	}
+	return r
 }

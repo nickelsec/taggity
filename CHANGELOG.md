@@ -35,6 +35,10 @@ earned one yet.
   demonstrably wrong. Under an `indicates: fixed` rule, an over-claimed version
   classifies as `narrower-than-claimed`, which was never rendered. Found while
   auditing GHSA-wxj7-3fx5-pp9m.
+- `RuleString` rendered both polarities identically, so an evidence record or
+  an exported OSV document could not distinguish "calls X, which is the danger"
+  from "calls X, which is the fix". Inverted-polarity rules now render
+  `calls: X (indicates: fixed)`.
 - `Repo.Tags` discarded the error returned by the tag iterator.
 - Cache directories are created 0750 rather than 0755.
 
