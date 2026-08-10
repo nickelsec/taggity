@@ -22,6 +22,17 @@ func TestBannerOnBareInvocation(t *testing.T) {
 	}
 }
 
+// The usage block documented `init` without --package, which init requires, so
+// the command as printed failed on copy-paste. Documentation that does not run
+// is worse than none: it costs the reader the time to find out.
+func TestUsageDocumentsEveryRequiredInitFlag(t *testing.T) {
+	for _, flag := range []string{"--repo", "--package", "--file", "--symbol", "--calls"} {
+		if !strings.Contains(usage, flag) {
+			t.Errorf("usage omits %s, which taggity init requires", flag)
+		}
+	}
+}
+
 func TestUnknownCommandFailsWithUsage(t *testing.T) {
 	var out, errOut bytes.Buffer
 	err := run([]string{"nonsense"}, &out, &errOut)

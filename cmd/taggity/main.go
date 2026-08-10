@@ -29,8 +29,8 @@ const usage = `
 Usage:
   taggity check <pkg>@<version> --spec <file>   check one version
   taggity audit --spec <file> --advisory <file> audit an advisory's boundaries
-  taggity init --repo <url> --file <f> --symbol <s> --calls <t>
-                                                scaffold a spec
+  taggity init --repo <url> --package <name> --file <f> --symbol <s>
+               --calls <t> [--indicates fixed]  scaffold a spec
   taggity export --spec <file> --advisory <f>   emit OSV JSON
   taggity version                               print version
 
