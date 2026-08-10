@@ -1,0 +1,115 @@
+// Package audit compares an advisory's claimed affected range against what the
+// source actually contains.
+//
+// It does not verify a whole range. It probes the edges where a claim would be
+// wrong — the version below each introduced, each fixed version, and the newest
+// release on branches the advisory never mentions. Six checks answer the
+// question that fifty would, which is what makes auditing at scale possible.
+package audit
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+// Advisory is the subset of the OSV schema this package reads.
+type Advisory struct {
+	ID       string     `json:"id"`
+	Summary  string     `json:"summary"`
+	Affected []Affected `json:"affected"`
+}
+
+// Affected is one package's claimed ranges.
+type Affected struct {
+	Package struct {
+		Ecosystem string `json:"ecosystem"`
+		Name      string `json:"name"`
+	} `json:"package"`
+	Ranges   []Range  `json:"ranges"`
+	Versions []string `json:"versions,omitempty"`
+}
+
+// Range is a sequence of introduced/fixed events.
+type Range struct {
+	Type   string  `json:"type"`
+	Events []Event `json:"events"`
+}
+
+// Event is a single boundary in a range.
+type Event struct {
+	Introduced string `json:"introduced,omitempty"`
+	Fixed      string `json:"fixed,omitempty"`
+	LastAffec  string `json:"last_affected,omitempty"`
+}
+
+// LoadAdvisory reads an OSV JSON document.
+func LoadAdvisory(path string) (*Advisory, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading advisory: %w", err)
+	}
+	var a Advisory
+	if err := json.Unmarshal(b, &a); err != nil {
+		return nil, fmt.Errorf("parsing advisory: %w", err)
+	}
+	if a.ID == "" {
+		return nil, fmt.Errorf("advisory has no id")
+	}
+	return &a, nil
+}
+
+// ClaimedRanges returns the ranges asserted for one package, flattened into
+// introduced/fixed pairs. An open range (introduced with no fixed) yields an
+// empty Fixed.
+type Claim struct {
+	Introduced string
+	Fixed      string
+}
+
+// Claims extracts the introduced/fixed pairs for a package name.
+func (a *Advisory) Claims(pkg string) []Claim {
+	var out []Claim
+	for _, af := range a.Affected {
+		if af.Package.Name != pkg {
+			continue
+		}
+		for _, r := range af.Ranges {
+			var cur Claim
+			open := false
+			for _, e := range r.Events {
+				switch {
+				case e.Introduced != "":
+					if open {
+						out = append(out, cur)
+					}
+					cur = Claim{Introduced: e.Introduced}
+					open = true
+				case e.Fixed != "":
+					cur.Fixed = e.Fixed
+					out = append(out, cur)
+					open = false
+				case e.LastAffec != "":
+					cur.Fixed = "" // last_affected is inclusive; treat as open
+					out = append(out, cur)
+					open = false
+				}
+			}
+			if open {
+				out = append(out, cur)
+			}
+		}
+	}
+	return out
+}
+
+// String renders the claims for a report header.
+func (c Claim) String() string {
+	if c.Fixed == "" {
+		return ">= " + c.Introduced
+	}
+	if c.Introduced == "0" || c.Introduced == "" {
+		return "< " + c.Fixed
+	}
+	return ">= " + c.Introduced + ", < " + c.Fixed
+}

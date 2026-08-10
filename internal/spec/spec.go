@@ -67,7 +67,7 @@ type Code struct {
 	Aliases []Alias `yaml:"aliases,omitempty"`
 }
 
-// Rule is the structural predicate. Exactly one field may be set.
+// Rule is the structural predicate. Exactly one match field may be set.
 //
 // The vocabulary is deliberately small: every rule kind needs its own
 // adversarial fixtures before it can be trusted, and an untested rule kind is
@@ -77,6 +77,28 @@ type Rule struct {
 	// Dotted targets such as pickle.loads are matched exactly; a bare name
 	// does not match a dotted call.
 	Calls string `yaml:"calls,omitempty"`
+
+	// Indicates declares what a match means. Default "vulnerable": the
+	// construct is the danger, as with calls: eval.
+	//
+	// Some fixes add a call rather than removing one — redis-py wrapped its
+	// command path in asyncio.shield — and the only honest way to express that
+	// with a presence rule is to match the guard and say so. Without this
+	// field a report would label a correctly fixed version as a disagreement,
+	// because the engine cannot infer polarity from the target's name.
+	Indicates string `yaml:"indicates,omitempty"`
+}
+
+// Polarity values for Rule.Indicates.
+const (
+	IndicatesVulnerable = "vulnerable"
+	IndicatesFixed      = "fixed"
+)
+
+// MatchMeansVulnerable reports whether a positive match should be read as the
+// version being affected.
+func (r Rule) MatchMeansVulnerable() bool {
+	return r.Indicates != IndicatesFixed
 }
 
 // Alias is a previous name for the symbol, restricted to a version range.
@@ -135,6 +157,13 @@ func (s *Spec) Validate() error {
 	}
 	if strings.ContainsRune(s.Signal.Code.File, '\\') {
 		errs = append(errs, errors.New("signal.code.file must use forward slashes"))
+	}
+	switch s.Signal.Code.Rule.Indicates {
+	case "", IndicatesVulnerable, IndicatesFixed:
+	default:
+		errs = append(errs, fmt.Errorf(
+			"signal.code.rule.indicates is %q, must be %q or %q",
+			s.Signal.Code.Rule.Indicates, IndicatesVulnerable, IndicatesFixed))
 	}
 	return errors.Join(errs...)
 }

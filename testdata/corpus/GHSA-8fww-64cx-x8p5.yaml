@@ -1,0 +1,37 @@
+# redis-py race condition (CWE-404) fixed by wrapping the command path in
+# asyncio.shield, so a cancelled future can no longer leave the connection in a
+# state where the next caller reads someone else's response.
+#
+# Advisory claims TWO ranges, which is why this advisory is the corpus case for
+# multi-branch backports:
+#   >= 4.5.0, < 4.5.4
+#   >= 4.2.0, < 4.4.4
+#
+# INVERTED POLARITY. Every other spec asks "is the dangerous construct present".
+# This one asks "is the FIX present", because the fix added a call rather than
+# removing one. Read the verdicts accordingly:
+#
+#   NOT_VULNERABLE (shield absent)  -> the fix is missing
+#   VULNERABLE     (shield present) -> the fix is applied
+#
+# The engine reports what is in the file; the polarity lives in the question the
+# spec asks. A future rule kind that can express absence directly would remove
+# the need for this inversion, but proving absence points at under-reporting, so
+# it has not been added.
+package:
+  ecosystem: PyPI
+  name: redis
+repo: https://github.com/redis/redis-py
+advisory: GHSA-8fww-64cx-x8p5
+
+authoring:
+  mode: manual
+  reviewed_by: nick
+
+signal:
+  code:
+    file: redis/asyncio/client.py
+    symbol: Redis.execute_command
+    rule:
+      calls: asyncio.shield
+      indicates: fixed
