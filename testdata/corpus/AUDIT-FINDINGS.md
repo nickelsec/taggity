@@ -161,9 +161,110 @@ disagreements as weaker evidence.
 **Zero under-reports held.** Nothing affected was reported safe, on either the
 in-range versions or the follow-up investigation.
 
+## GHSA-wxj7-3fx5-pp9m — MLflow, and the first real finding
+
+The second multi-branch case. MLflow's `gateway_proxy_handler` forwarded a
+caller-supplied `gateway_path` into an outbound request (SSRF, CWE-918). The fix
+extracted `_validate_gateway_path` and calls it before the request is built, and
+was released on two lines: 3.1.0 on mainline, 2.22.2 as a backport.
+
+```
+claims  >= 3.0.0rc0, < 3.1.0
+claims  < 2.22.2
+
+174 tags in the repository, 7 probed (4.0%)
+
+version    fix present?   rule                   outcome
+0.9.1      UNKNOWN        unmentioned-line       [symbol_not_found]
+1.30.0     UNKNOWN        unmentioned-line       [symbol_not_found]
+2.22.1     absent         below-fixed            consistent
+2.22.2     PRESENT        fixed                  consistent
+2.22.4     PRESENT        below-introduced       consistent
+3.0.1      PRESENT        below-fixed            narrower-than-claimed
+3.1.0      PRESENT        fixed                  consistent
+
+OVERCLAIM  3.0.1          [below-fixed]
+gap        0.9.1-1.30.0   [symbol_not_found]
+```
+
+### The finding
+
+**The advisory's 3.x range is wrong.** It claims `>= 3.0.0rc0, < 3.1.0` and
+enumerates `3.0.0` and `3.0.1` as affected. Both already contain the fix.
+
+Verified three independent ways:
+
+- **By tag content.** `_validate_gateway_path` is absent from every 3.0.0
+  release candidate (rc0–rc3) and present at 3.0.0, 3.0.1 and 3.1.0.
+- **By history.** Commit `4a0f6c1345` ("Validate `gateway_path` in
+  `gateway_proxy_handler`", #15970) landed 2025-06-02, and
+  `git tag --contains` lists `v3.0.0`.
+- **By the engine**, which reached the same boundaries unaided.
+
+The range should end at the last release candidate. As published, two shipped
+releases are marked vulnerable when they are not — the over-report direction,
+so nobody is left unwarned, but the advisory is still wrong.
+
+This is the first observation in the corpus that survived investigation. The
+redis one did not.
+
+### What worked
+
+**Both branches' fixes located unaided**, at 2.22.2 and 3.1.0, absent at 2.22.1.
+The backport case resolved correctly a second time.
+
+**Boundary selection stayed cheap and was sufficient.** Seven probes out of 174
+tags (4.0%), and the edge probe alone exposed the error — `below-fixed` selects
+only the version immediately under `fixed`, which was 3.0.1. Probing the range
+interior would have cost more and found the same thing.
+
+**`symbol_not_found` behaved as designed.** `gateway_proxy_handler` did not exist
+in 0.9.1 or 1.30.0, so those probes are honest gaps rather than false clears.
+
+### The defect this run exposed — fixed
+
+**The finding was invisible.** It classified as `narrower-than-claimed`, which
+`Findings()` deliberately excludes, and the report printed **`0 finding(s)`** for
+an advisory that is demonstrably wrong. The only trace was a `1 narrower` count
+in the summary line.
+
+The exclusion itself is right: `Narrower` normally means the engine could not see
+something the advisory claims, which is usually the spec's blind spot. But that
+reasoning assumes a **danger-shaped** rule. Under `indicates: fixed` the polarity
+inverts — `Narrower` means *the guard was found present*, which is positive
+evidence, not missing evidence.
+
+Fixed by adding `Report.Overclaims()` and rendering it as its own section,
+`CLAIMED BUT NOT OBSERVED (needs review, not a finding)`. It stays out of
+`Findings()` and out of `export`, so nothing unreviewed is ever published as a
+claim — but it is now on screen where a reader will see it.
+
+### What this says about `unmentioned-line`
+
+The rule fired twice here (0.9.1, 1.30.0) and both times returned
+`symbol_not_found` — honest gaps, no noise. Combined with redis, where it
+produced four true-but-immaterial disagreements, the picture is that the rule is
+**not wrong, but its yield depends entirely on how far the unmentioned lines are
+from the fix.** No change yet; a third case should decide whether it needs
+release-line distance awareness.
+
+### Two guard-shaped fixes out of two
+
+Worth naming: both multi-branch advisories in the corpus were fixed by **adding a
+check**, not by removing a dangerous call. The `calls` vocabulary was designed
+around danger-shaped constructs, and real backported fixes keep turning out to be
+the other shape.
+
+That makes `indicates: fixed` the common path rather than the exception, despite
+the redis run establishing that it is the fragile one. A rule kind that can
+express "this argument is unvalidated" would fit these cases better than
+inverting polarity does.
+
 ## Next
 
-The engine has now been exercised end to end on one advisory. A second
-multi-branch case is needed before the boundary rules can be trusted to
-generalise — particularly the `unmentioned-line` rule, whose only outing so far
-produced four true-but-immaterial disagreements.
+Two multi-branch cases audited, one real finding. The boundary rules generalised:
+both located their fixes unaided, and both stayed under 7% of tags probed.
+
+The open question is no longer whether the engine works but whether the rule
+vocabulary matches the shape of real fixes. Two for two on guard-shaped fixes
+suggests it does not, quite.

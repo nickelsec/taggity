@@ -137,3 +137,79 @@ func TestAuditBoundariesAreCheap(t *testing.T) {
 		len(allTags), len(boundaries),
 		100*float64(len(boundaries))/float64(len(allTags)))
 }
+
+// TestAuditMLflowOverclaimsThreeZero is the project's first real finding.
+//
+// GHSA-wxj7-3fx5-pp9m claims >= 3.0.0rc0, < 3.1.0 and enumerates 3.0.0 and
+// 3.0.1 as affected. Both already contain the fix: commit 4a0f6c1345
+// ("Validate `gateway_path` in `gateway_proxy_handler`", #15970) landed
+// 2025-06-02 and `git tag --contains` lists v3.0.0. Only the rc line predates
+// it. The 3.x range should end at the last release candidate, not at 3.1.0.
+//
+// Like the redis spec this one has inverted polarity — it matches the FIX, so
+// VULNERABLE means "guard present". That is also why the observation lands in
+// Overclaims rather than Findings, and why Overclaims has to be rendered: the
+// report said "0 finding(s)" for an advisory that is demonstrably wrong.
+func TestAuditMLflowOverclaimsThreeZero(t *testing.T) {
+	sp, err := spec.Load(corpusPath("GHSA-wxj7-3fx5-pp9m.yaml"))
+	if err != nil {
+		t.Fatalf("spec: %v", err)
+	}
+	adv, err := audit.LoadAdvisory(corpusPath("GHSA-wxj7-3fx5-pp9m.json"))
+	if err != nil {
+		t.Fatalf("advisory: %v", err)
+	}
+	repo, err := git.OpenOrClone(sp.Repo)
+	if err != nil {
+		t.Fatalf("clone: %v", err)
+	}
+	_, allTags, err := repo.Tags()
+	if err != nil {
+		t.Fatalf("tags: %v", err)
+	}
+
+	claims := adv.Claims(sp.Package.Name)
+	if len(claims) != 2 {
+		t.Fatalf("expected two claimed ranges, got %d", len(claims))
+	}
+
+	boundaries := audit.SelectBoundaries(claims, allTags)
+	rep := audit.Run(&check.Checker{Source: repo}, sp, adv, boundaries)
+
+	t.Logf("\n%s  %s", rep.AdvisoryID, rep.Package)
+	for _, res := range rep.Results {
+		t.Log(res.Describe())
+	}
+
+	guard := map[string]taggity.Verdict{}
+	for _, res := range rep.Results {
+		guard[res.Boundary.Version] = res.Signals.Overall()
+	}
+
+	// Both branches' fixes must be located without being told where they are.
+	for _, want := range []string{"2.22.2", "3.1.0"} {
+		if guard[want] != taggity.Vulnerable {
+			t.Errorf("fix not detected at %s, which the advisory names as fixed", want)
+		}
+	}
+	if guard["2.22.1"] != taggity.NotVulnerable {
+		t.Errorf("2.22.1 = %v, want the guard absent one release before the backport",
+			guard["2.22.1"])
+	}
+
+	// The finding. 3.0.1 is claimed affected and carries the guard.
+	if guard["3.0.1"] != taggity.Vulnerable {
+		t.Errorf("3.0.1 = %v, want VULNERABLE (guard present): v3.0.0 contains "+
+			"the fix commit, so the advisory's 3.x range overclaims", guard["3.0.1"])
+	}
+
+	var spans []string
+	for _, o := range rep.Overclaims() {
+		spans = append(spans, o.Span())
+		t.Logf("  OVERCLAIM  %-14s %-14s %v", o.Span(), o.Verdict, o.Rules)
+	}
+	if len(spans) == 0 {
+		t.Fatal("no overclaim reported; the 3.x range is wrong and the report " +
+			"must not render that as zero findings")
+	}
+}
