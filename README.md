@@ -1,0 +1,113 @@
+# taggity
+
+[![CI](https://github.com/nickelsec/taggity/actions/workflows/ci.yml/badge.svg)](https://github.com/nickelsec/taggity/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
+Audits published vulnerability advisories and finds where their affected
+version ranges are wrong.
+
+> **Status: early development.** The engine is being built in the open. No
+> release yet — see [Limitations](#limitations) before relying on anything here.
+
+## The problem
+
+Filing a vulnerability report means stating which versions are affected. Working
+that out accurately is manual archaeology — trace the fix commit, map it to
+tags, check whether the fix was backported to every maintenance branch. Because
+it is expensive, people guess, and "version X and earlier" is usually wrong.
+
+The errors are real and measurable. In `github/advisory-database` there are
+**108 merged pull requests correcting affected version ranges** and **99
+mentioning backports**. One React Router advisory drew four separate corrections
+from four different people, each doing the same archaeology by hand. A
+django-haystack advisory shipped with the literal string `eval()` where its
+version range should have been — visible to humans, inert to every scanner.
+
+Wrong ranges are not cosmetic. A version wrongly marked safe is a version whose
+users are never told to upgrade.
+
+## What taggity does
+
+It answers one question, reproducibly:
+
+> Does this exact version contain this exact vulnerable construct?
+
+Given a spec, it resolves the version to a commit, parses the source, and
+reports `VULNERABLE`, `NOT_VULNERABLE`, or `UNKNOWN` — with evidence detailed
+enough for someone else to re-derive the answer by hand.
+
+```yaml
+package: { ecosystem: PyPI, name: examplepkg }
+repo: https://github.com/example/examplepkg
+advisory: GHSA-xxxx-yyyy-zzzz
+
+signal:
+  code:
+    file: src/parser.py
+    symbol: Alpha.parse_untrusted
+    rule: { calls: eval }
+```
+
+Running that against an advisory's boundary versions surfaces disagreements: a
+range claiming `>= 2.0.0` while the vulnerable code is still present in 1.9.x
+because the fix was never backported.
+
+## Reproducibility, not confidence
+
+There is no reliable ground truth here. NVD and GHSA are themselves frequently
+wrong, and independent tools disagree on the same vulnerability with no arbiter.
+A tool emitting `VULNERABLE (confidence: 92%)` would be making a claim no
+experiment could falsify.
+
+So taggity does not claim to be right. It claims to be **reproducible**: here is
+exactly what was checked, here is how to repeat it, here is where it was
+uncertain. Every finding ships with the command that reproduces it.
+
+## Design
+
+**`UNKNOWN` is a real answer.** When a symbol has been refactored away or a
+version has no matching tag, the honest output is "I could not determine this",
+not a guess. `UNKNOWN` versions are excluded from exported OSV rather than
+assumed safe.
+
+**Under-reporting is the only unacceptable failure.** Wrongly flagging a version
+is recoverable — a maintainer disputes it and the range narrows. Wrongly
+clearing one means a scanner stays silent. Exactly one code path in this
+repository can conclude `NOT_VULNERABLE`, and a test enforces that structurally.
+
+**Verdicts are structural, not textual.** Matching uses a real parser
+([gotreesitter](https://github.com/odvcencio/gotreesitter), pure Go, no cgo), so
+`eval(` in a comment, a docstring, or a nested function does not count as a
+call. An early prototype used substring matching and was wrong on three of six
+adversarial cases while looking entirely correct.
+
+## Limitations
+
+Stated plainly, because a tool that overclaims here is worse than no tool.
+
+- **PyPI only.** The ecosystem interface exists; npm is next.
+- **One rule type: `calls`.** Everything else returns `UNKNOWN`. This covers
+  `eval`, `exec`, `pickle.loads`, `os.system`, and similar sinks, but not
+  vulnerabilities that are not call-shaped. PyYAML's `yaml.load` fix changed a
+  default argument rather than a call, and `calls` cannot express that.
+- **A git repository is required.** Missing or unreachable means a hard error,
+  never a verdict.
+- **The tag is assumed to be what was published.** Uploads from a dirty tree and
+  untagged hotfixes are not detected.
+- **Aliased imports are not resolved.** `from pickle import loads; loads(x)`
+  will not match `calls: pickle.loads`.
+- **No execution, no reachability analysis.** Code presence is not
+  exploitability.
+
+## Development
+
+```sh
+make test       # hermetic tests
+make test-live  # clones real repositories over the network
+make lint
+make build
+```
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).
