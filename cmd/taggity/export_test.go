@@ -50,7 +50,7 @@ func TestExportExcludesUnreviewedDisagreements(t *testing.T) {
 		t.Errorf("affected = %v, want only the established version", a.Versions)
 	}
 
-	ts, ok := a.DatabaseSpecifc["taggity"].(map[string]any)
+	ts, ok := a.DatabaseSpecific["taggity"].(map[string]any)
 	if !ok {
 		t.Fatal("provenance block missing")
 	}
@@ -108,7 +108,7 @@ func TestExportRecordsMatcherVersion(t *testing.T) {
 	rep := &audit.Report{AdvisoryID: "GHSA-test"}
 	doc := buildOSV(rep, testSpec(""))
 
-	ts, ok := doc.Affected[0].DatabaseSpecifc["taggity"].(map[string]any)
+	ts, ok := doc.Affected[0].DatabaseSpecific["taggity"].(map[string]any)
 	if !ok {
 		t.Fatal("provenance block missing")
 	}

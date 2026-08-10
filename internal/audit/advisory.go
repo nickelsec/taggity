@@ -61,6 +61,26 @@ func LoadAdvisory(path string) (*Advisory, error) {
 	return &a, nil
 }
 
+// ErrAdvisoryMismatch reports that a spec names a different advisory than the
+// one it is being run against.
+var ErrAdvisoryMismatch = errors.New("spec and advisory disagree")
+
+// CheckAdvisoryMatch reports whether a spec may be run against this advisory.
+// A spec naming no advisory matches anything; a spec that names one must name
+// this one.
+//
+// This is an error rather than a warning because the result of ignoring it is a
+// confident report about the wrong advisory — and in export, a machine-readable
+// OSV document carrying one advisory's ID over another's findings. A warning on
+// stderr is invisible in a pipeline, which is where these commands run.
+func CheckAdvisoryMatch(specAdvisory, advisoryID string) error {
+	if specAdvisory == "" || specAdvisory == advisoryID {
+		return nil
+	}
+	return fmt.Errorf("%w: spec names %s, --advisory is %s",
+		ErrAdvisoryMismatch, specAdvisory, advisoryID)
+}
+
 // Claim is one asserted range for a package, flattened into an
 // introduced/fixed pair. An open range (introduced with no fixed) yields an
 // empty Fixed.

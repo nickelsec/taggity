@@ -30,8 +30,8 @@ type osvAffected struct {
 		Ecosystem string `json:"ecosystem"`
 		Name      string `json:"name"`
 	} `json:"package"`
-	Versions        []string       `json:"versions,omitempty"`
-	DatabaseSpecifc map[string]any `json:"database_specific,omitempty"`
+	Versions         []string       `json:"versions,omitempty"`
+	DatabaseSpecific map[string]any `json:"database_specific,omitempty"`
 }
 
 func runExport(args []string, stdout, stderr io.Writer) error {
@@ -69,6 +69,12 @@ Flags:
 	}
 	adv, err := audit.LoadAdvisory(*advPath)
 	if err != nil {
+		return err
+	}
+	// Matters more here than in audit: this command's output is a
+	// machine-readable OSV document stamped with adv.ID, so a mismatch attaches
+	// one advisory's identity to another's findings.
+	if err := audit.CheckAdvisoryMatch(sp.Advisory, adv.ID); err != nil {
 		return err
 	}
 	repo, err := git.OpenOrClone(sp.Repo)
@@ -144,7 +150,7 @@ func buildOSV(rep *audit.Report, sp *spec.Spec) osvDoc {
 	a := osvAffected{Versions: affected}
 	a.Package.Ecosystem = sp.Package.Ecosystem
 	a.Package.Name = sp.Package.Name
-	a.DatabaseSpecifc = map[string]any{
+	a.DatabaseSpecific = map[string]any{
 		"taggity": map[string]any{
 			"method":                "static-predicate-boundary-probe",
 			"rule":                  sp.RuleString(),
