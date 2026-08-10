@@ -28,6 +28,19 @@ compatibility promise and neither has earned one yet.
 
 ### Fixed
 
+- Boundary selection probed versions the repository does not tag. A claim can
+  name a version that was never released, or something that is not a version:
+  PYSEC-2021-382 lists a commit hash where a fixed version belongs. Each one
+  spent a probe to learn `no_tag` and reported a gap that said nothing about
+  the advisory. The qutebrowser audit drops from seven probes with a spurious
+  gap to five with none, and the finding is unchanged.
+- A release line was treated as unmentioned when a claim covered it without
+  naming its endpoints. A claim spanning 1.0.0 to 3.0.1 covers all of line 2,
+  and a claim with no fixed version covers every line above its introduced.
+  Both were probed as silence, which disagrees with a claim that already warns
+  about them. Line coverage is now derived from the releases rather than from
+  the claim's endpoints, which subsumes the earlier `introduced: 0` special
+  case.
 - Pre-release versions compared as text, so `1.0.0rc10` sorted before
   `1.0.0rc9` and `1.0.0b10` before `1.0.0b2`. Advisory claims are routinely
   written against a pre-release, and this reaches boundary selection through

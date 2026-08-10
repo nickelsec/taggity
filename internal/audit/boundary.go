@@ -54,9 +54,19 @@ func SelectBoundaries(claims []Claim, available []git.TagRef) []Boundary {
 	// fixed version and also sit below another range's introduced. Record the
 	// most specific reason rather than whichever rule ran first, because the
 	// rule is what a report cites to explain a finding.
+	// Only released tags are probeable. A claim may name a version this
+	// repository never tagged, or something that is not a version at all:
+	// PYSEC-2021-382 lists a commit hash where a fixed version belongs.
+	// Selecting one spends a probe to learn no_tag and reports a gap that says
+	// nothing about the advisory.
+	probeable := make(map[string]bool, len(rel))
+	for _, t := range rel {
+		probeable[t.Ver.Original] = true
+	}
+
 	at := map[string]Boundary{}
 	add := func(v, rule string, affected bool) {
-		if v == "" {
+		if v == "" || !probeable[v] {
 			return
 		}
 		if prev, ok := at[v]; ok && precedence(prev.Rule) >= precedence(rule) {
@@ -65,8 +75,6 @@ func SelectBoundaries(claims []Claim, available []git.TagRef) []Boundary {
 		at[v] = Boundary{Version: v, Rule: rule, ExpectAffected: affected}
 	}
 
-	mentioned := map[int]bool{} // release lines the advisory talks about
-
 	for _, c := range claims {
 		if c.Introduced != "" && c.Introduced != "0" {
 			if v, ok := predecessor(rel, c.Introduced); ok {
@@ -74,29 +82,16 @@ func SelectBoundaries(claims []Claim, available []git.TagRef) []Boundary {
 				// construct is present, users of it are not being warned.
 				add(v, RuleBelowIntroduced, false)
 			}
-			if maj, ok := majorOf(c.Introduced); ok {
-				mentioned[maj] = true
-			}
 		}
 		if c.Fixed != "" {
 			add(c.Fixed, RuleFixed, false)
 			if v, ok := predecessor(rel, c.Fixed); ok {
 				add(v, RuleBelowFixed, true)
 			}
-			if maj, ok := majorOf(c.Fixed); ok {
-				mentioned[maj] = true
-				// "introduced: 0" covers every release before Fixed, not just
-				// Fixed's own line. Marking the literal major alone would leave
-				// each earlier line looking unmentioned, and the rule below
-				// would probe versions the advisory already warns about.
-				if c.Introduced == "" || c.Introduced == "0" {
-					for m := range maj {
-						mentioned[m] = true
-					}
-				}
-			}
 		}
 	}
+
+	mentioned := mentionedLines(claims, rel)
 
 	// Release lines the advisory never mentions. A fix backported to 2.x while
 	// 1.x quietly kept the vulnerable code is the single most common way a
@@ -118,6 +113,56 @@ func SelectBoundaries(claims []Claim, available []git.TagRef) []Boundary {
 		return a.Compare(b) < 0
 	})
 	return out
+}
+
+// mentionedLines reports which release lines the advisory already talks about.
+//
+// A line counts as mentioned when some claim covers a release on it, which is
+// not the same as the line appearing in a claim's endpoints. "introduced: 0"
+// names no line but covers every line below its fixed version; a claim with no
+// fixed version covers every line above its introduced; and a claim spanning
+// 1.0.0 to 3.0.1 covers the whole of line 2 without naming it. Deriving this
+// from the releases rather than from the endpoints handles all three, and the
+// version below an introduced version stays outside the range on purpose.
+func mentionedLines(claims []Claim, rel []git.TagRef) map[int]bool {
+	mentioned := map[int]bool{}
+	for _, t := range rel {
+		line, ok := majorOfVer(t.Ver)
+		if !ok {
+			continue
+		}
+		for _, c := range claims {
+			if covers(c, t.Ver) {
+				mentioned[line] = true
+				break
+			}
+		}
+	}
+	return mentioned
+}
+
+// covers reports whether a claim's range includes v.
+func covers(c Claim, v git.Version) bool {
+	if c.Introduced != "" && c.Introduced != "0" {
+		lo, ok := git.ParseVersion(c.Introduced)
+		if !ok {
+			return false
+		}
+		if v.Compare(lo) < 0 {
+			return false
+		}
+	}
+	if c.Fixed == "" {
+		return true
+	}
+	hi, ok := git.ParseVersion(c.Fixed)
+	if !ok {
+		// A claim whose fixed version cannot be parsed states a lower bound and
+		// nothing more, so treat it as open above rather than as covering
+		// nothing. Reading it as empty would leave real lines looking silent.
+		return true
+	}
+	return v.Compare(hi) < 0
 }
 
 // precedence orders the selection rules by how specifically they identify a
@@ -167,14 +212,6 @@ func newestPerLine(rel []git.TagRef) map[int]string {
 		}
 	}
 	return out
-}
-
-func majorOf(v string) (int, bool) {
-	parsed, ok := git.ParseVersion(v)
-	if !ok {
-		return 0, false
-	}
-	return majorOfVer(parsed)
 }
 
 func majorOfVer(v git.Version) (int, bool) {
