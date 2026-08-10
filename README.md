@@ -14,8 +14,23 @@
 Audits published vulnerability advisories and finds where their affected
 version ranges are wrong.
 
-> **Status: early development.** The engine is being built in the open. No
-> release yet — see [Limitations](#limitations) before relying on anything here.
+> **v0.1.0 — the deterministic engine.** Audited against three real
+> multi-branch advisories. Read [Limitations](#limitations) before relying on
+> it: the corpus is three advisories, not an ecosystem, and one rule kind, not a
+> vocabulary.
+
+## Install
+
+```sh
+go install github.com/nickelsec/taggity/cmd/taggity@latest
+```
+
+Or take a binary from
+[Releases](https://github.com/nickelsec/taggity/releases) — each ships with
+`checksums.txt` and an SBOM.
+
+Pure Go with no cgo, so `go install` needs no C toolchain and the binaries are
+static.
 
 ## The problem
 
