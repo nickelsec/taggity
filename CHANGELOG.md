@@ -36,6 +36,12 @@ compatibility promise and neither has earned one yet.
 
 ### Notes
 
+Five more advisories audited, targeted by query rather than by hand. Two were
+consistent at every boundary (litestar, three branches; bugsink, four), and one
+produced the project's first under-report: PYSEC-2021-382 marks qutebrowser
+1.8.0 through 1.14.1 as safe when the fix does not land until 2.4.0. See
+`testdata/corpus/AUDIT-FINDINGS.md`.
+
 Only `any` exists as a combinator. An `all` combinator would let one location's
 UNKNOWN turn the whole result into NOT_VULNERABLE unless the three-valued
 conjunction is exactly right, and that is the direction that under-reports. It

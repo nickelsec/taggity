@@ -1,0 +1,38 @@
+# qutebrowser argument injection via the Windows qutebrowserurl: URL handler
+# (CVE-2021-41146). Opening a crafted qutebrowserurl:... URL could execute
+# qutebrowser commands, and through :spawn or :debug-pyeval, arbitrary code.
+#
+# The fix adds _validate_untrusted_args and calls it at the top of main()
+# before argument parsing.
+#
+# The corpus case for an UNDER-REPORT. PYSEC-2021-382 splits the affected
+# versions into two ranges:
+#
+#   < 1.8.0
+#   >= 2.0.0, < 2.4.0
+#
+# which marks 1.8.0 through 1.14.1 as safe. They are not. The guard does not
+# exist in any 1.x release: the whole --untrusted-args mechanism arrives in
+# 2.4.0, which the advisory's own text states ("The issue has been fixed in
+# qutebrowser v2.4.0"). GHSA-vw27-fwjf-5qxm, the same CVE, gets it right with a
+# single range of >= 1.7.0, < 2.4.0.
+#
+# INVERTED POLARITY. The rule matches the guard, so VULNERABLE means the fix is
+# present.
+package:
+  ecosystem: PyPI
+  name: qutebrowser
+repo: https://github.com/qutebrowser/qutebrowser
+advisory: PYSEC-2021-382
+
+authoring:
+  mode: manual
+  reviewed_by: nick
+
+signal:
+  code:
+    file: qutebrowser/qutebrowser.py
+    symbol: main
+    rule:
+      calls: _validate_untrusted_args
+      indicates: fixed

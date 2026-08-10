@@ -347,21 +347,103 @@ it is doing the job it was written for. Below an open-below claim it was pure
 noise. That is a stronger argument for release-line distance awareness than
 either earlier run made on its own.
 
+## The targeted run: five advisories, one under-report
+
+The first three advisories were picked by hand. This batch was picked by query,
+to find out whether the finding rate is one in three or one in thirty.
+
+Targeting: `pypa/advisory-database`, filtered to advisories with two to six
+independent fixed versions, a code-execution or traversal shape in the summary,
+and a linked fix commit. TensorFlow was excluded because the same advisory is
+mirrored across three packages and the code is mostly C++. That leaves 111
+candidates; five were audited.
+
+| advisory | package | branches | result |
+|---|---|---|---|
+| PYSEC-2026-2605 | litestar | 3 | consistent at all 6 boundaries |
+| PYSEC-2026-1226 | bugsink | 4 | consistent at all 8 boundaries |
+| PYSEC-2021-382 | qutebrowser | 2 | **under-report** |
+| PYSEC-2026-797 | cobbler | 2 | 2 disagreements, both explained |
+| PYSEC-2026-1127 | ansys-geometry | 2 | not audited: fix was a rename plus lint pragmas |
+
+### The finding: PYSEC-2021-382 marks vulnerable versions as safe
+
+qutebrowser's Windows installer registers a `qutebrowserurl:` URL handler, and a
+crafted URL could execute qutebrowser commands, reaching arbitrary code through
+`:spawn` or `:debug-pyeval` (CVE-2021-41146). The fix adds
+`_validate_untrusted_args` and calls it at the top of `main()`.
+
+The advisory splits the affected versions into two ranges:
+
+```
+claims  < 1.8.0
+claims  >= 2.0.0, < 2.4.0
+```
+
+That leaves **1.8.0 through 1.14.1 unmentioned, and therefore implied safe.**
+They are not safe. Verified three ways:
+
+- **By tag content.** `_validate_untrusted_args` appears in no 1.x release. The
+  whole `--untrusted-args` mechanism is absent from 1.8.0, 1.8.1, 1.8.2, 1.8.3,
+  1.9.0 and 2.0.0, and first appears at 2.4.0.
+- **By the advisory's own text**, which says "The issue has been fixed in
+  qutebrowser v2.4.0".
+- **By the GHSA record.** GHSA-vw27-fwjf-5qxm covers the same CVE with a single
+  range, `>= 1.7.0, < 2.4.0`, and gets it right.
+
+The affected-versions list in the PYSEC record has a matching hole: it
+enumerates 64 versions and not one of them is in 1.8.x through 1.14.x.
+
+**This is the first under-report the project has found**, and it is the failure
+mode the entire verdict model exists to prevent. The MLflow finding was an
+over-claim, which is recoverable. This one leaves users of eleven minor releases
+without a reason to upgrade.
+
+The engine reached it from a probe of 7 tags out of 100.
+
+### cobbler: two disagreements, neither a finding
+
+Worth recording because both are the known guard-shaped failure rather than
+anything new.
+
+**3.3.7** renamed the entire `kickstart` vocabulary to `autoinstall`: 46
+occurrences of `kickstart` at 2.1.0, zero at 3.3.7, against 52 of `autoinstall`.
+The guard `_validate_ks_template_path` is a `ks`-era name, so its absence means
+the protection was reimplemented under new naming rather than removed. This is
+exactly the redis-py pattern.
+
+**2.1.0** predates the advisory's claimed introduction of 2.4.0. `modify_item`
+there is unguarded, but the advisory does not claim the version is affected, and
+a rule matching the guard cannot distinguish "before the vulnerability" from
+"after the fix was reverted".
+
+Both were resolved by reading the source at those tags, which took minutes
+rather than the hours the redis case cost. Knowing the failure mode in advance
+is most of the work.
+
+### What the run says about the finding rate
+
+One under-report in five audited advisories. That is a real rate rather than a
+single anecdote, though five is still a small sample and the targeting was
+deliberately biased toward advisories likely to be wrong.
+
+Two of the five were clean at every boundary, which is the more reassuring
+result: the tool stayed silent on correct advisories with three and four
+backported branches respectively.
+
+**Five of five fixes were guard-shaped**, adding a check rather than removing a
+dangerous call, so all five specs needed `indicates: fixed`. Across eight
+multi-branch advisories now audited, only Vitrage was danger-shaped. The `calls`
+vocabulary was designed around the shape that turns out to be the exception.
+
 ## Next
 
-Three multi-branch advisories audited: one real finding, one clean agreement, one
-serious false-positive bug caught by the clean case.
+Eight multi-branch advisories audited across three sessions: two real findings,
+one of them an under-report, and three serious engine defects surfaced by
+running unfamiliar cases rather than by review.
 
-Two things the third run settled:
-
-**Corpus acquisition is not the bottleneck.** An earlier concern was that
-suitable advisories had to be hand-picked from the ~110 backport-correction PRs
-in `github/advisory-database`, of which only two were usable. Querying
-`pypa/advisory-database` directly finds **2,450 PyPI advisories with two or more
-independent fixed ranges**, and 84 of those are danger-shaped with a linked fix
-commit. The supply is there; the earlier search was just aimed at the wrong seam.
-
-**The negative control matters more than the next finding.** The Vitrage bug was
-only visible because the advisory was known-correct in advance. Findings-only
-testing would have shown twelve plausible disagreements on an unfamiliar package
-and there would have been no reason to doubt them.
+The open question is no longer whether findings exist. It is whether the
+disagreement-to-finding ratio is workable at scale: this run produced three
+disagreements, of which one was real. A researcher auditing fifty advisories
+would read fifty reports to file perhaps ten corrections, which is worth it, but
+only if resolving each disagreement stays a matter of minutes.
