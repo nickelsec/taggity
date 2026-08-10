@@ -35,5 +35,17 @@ cover:
 	go test -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out
 
+# Validate the release config and build a full snapshot without tagging or
+# publishing. Run before every tag.
+#
+# There is deliberately no target that publishes: tags are pushed by hand, and a
+# make target that cuts a public release is one typo away from doing so.
+# SBOM generation is skipped here because it needs syft on PATH; CI installs it.
+# Everything else -- the six cross-compiled targets, the archives, and the
+# checksums -- is built for real.
+release-check:
+	goreleaser check
+	goreleaser release --snapshot --clean --skip=publish,sbom
+
 clean:
-	rm -rf bin coverage.out
+	rm -rf bin dist coverage.out

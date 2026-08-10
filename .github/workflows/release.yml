@@ -1,0 +1,41 @@
+name: Release
+
+# Only a pushed tag releases. Nothing here runs on a branch push, and the
+# release GoReleaser creates is a draft: publishing stays a deliberate act.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  goreleaser:
+    name: goreleaser
+    runs-on: ubuntu-latest
+    permissions:
+      # Creating the draft release and uploading its artifacts.
+      contents: write
+    steps:
+      # Actions are pinned to commit SHAs rather than tags. A tag is mutable and
+      # this workflow has write access to releases; for a tool that audits
+      # supply-chain claims, taking that on trust would be difficult to defend.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # GoReleaser derives its commit list from history; a shallow clone
+          # produces an empty one.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.25'
+
+      # Required by the sboms block in .goreleaser.yaml.
+      - uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
