@@ -174,8 +174,8 @@ Stated plainly, because a tool that overclaims here is worse than no tool.
 ## Development
 
 ```sh
-make test       # hermetic tests
-make test-live  # clones real repositories over the network
+make test         # hermetic tests, no network
+make test-corpus  # clones real repositories; reproduces every claim above
 make lint
 make build
 ```
