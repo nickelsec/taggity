@@ -1,0 +1,66 @@
+version: "2"
+
+linters:
+  default: all
+  disable:
+    - cyclop          # gocyclo/gocognit already cover this
+    - depguard        # re-enabled below with real rules
+    - exhaustruct     # partial struct literals are idiomatic here
+    - funlen          # length alone is not a defect
+    - gochecknoglobals # build-time version injection needs one
+    - gocognit        # overlaps gocyclo
+    - godox           # TODO comments are fine in an early project
+    - ireturn         # returning interfaces is the point of the seams
+    - lll             # gofmt already governs layout
+    - mnd             # not every literal is a magic number
+    - nlreturn        # stylistic
+    - nonamedreturns  # named returns document multi-value results
+    - varnamelen      # short names are fine in short scopes
+    - wsl             # stylistic whitespace rules
+    - wsl_v5          # ditto
+
+  enable:
+    - depguard
+
+  settings:
+    depguard:
+      rules:
+        # The v0.1.0 engine contains no LLM code at all. When internal/llm
+        # arrives, nothing outside it may import it: a model must never sit in
+        # an evaluation path, because the same spec has to produce the same
+        # verdict on every run. Enforcing that here makes a violation a build
+        # failure rather than something a reviewer has to notice.
+        llm-out-of-engine:
+          files:
+            - "!**/internal/llm/**"
+          deny:
+            - pkg: github.com/nickelsec/taggity/internal/llm
+              desc: >-
+                evaluation code must not import internal/llm; LLM output is
+                pinned into the spec by a human and evaluated deterministically
+
+        # The domain package defines verdict semantics and must not depend on
+        # how sources are fetched or parsed.
+        domain-stays-leaf:
+          files:
+            - "**/internal/taggity/*.go"
+          deny:
+            - pkg: github.com/nickelsec/taggity/internal
+              desc: internal/taggity is a leaf package and imports no siblings
+
+    exhaustive:
+      default-signifies-exhaustive: true
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment  # readability wins over struct packing here
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

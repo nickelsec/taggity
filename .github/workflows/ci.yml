@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows is not optional: it is the primary development platform, and
+        # path handling breaks silently without it in the matrix.
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          check-latest: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      # The race detector needs cgo. GitHub runners ship a C toolchain on all
+      # three platforms, so it is enabled here even though the shipped binary
+      # is pure Go and cross-compiles without one.
+      - name: Test
+        run: go test -race -coverprofile=coverage.out ./...
+        env:
+          CGO_ENABLED: 1
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  gosec:
+    name: gosec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: securego/gosec@master
+        with:
+          args: ./...

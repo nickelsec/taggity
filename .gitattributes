@@ -1,0 +1,7 @@
+# Normalize to LF in the repository on every platform. Without this, a Windows
+# checkout commits CRLF and the diff is noise for everyone else.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gz  binary
