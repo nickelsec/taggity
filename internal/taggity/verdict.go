@@ -60,6 +60,12 @@ const (
 	// it. This is a resolution failure, never evidence of safety.
 	ReasonNoTag Reason = "no_tag"
 
+	// ReasonCommitUnreadable means a tag resolved but the object it names could
+	// not be read. The remedy differs from ReasonNoTag: the tag spelling is
+	// fine and the cached clone is what to suspect, so reporting these together
+	// would send a researcher looking for a tag that is already there.
+	ReasonCommitUnreadable Reason = "commit_unreadable"
+
 	// ReasonUnparseableVersion means the version string is not PEP 440.
 	ReasonUnparseableVersion Reason = "unparseable_version"
 

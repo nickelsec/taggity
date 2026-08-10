@@ -26,6 +26,27 @@ compatibility promise and neither has earned one yet.
   `UNKNOWN` rather than being evaluated as though its question had been
   answered.
 
+### Fixed
+
+- Pre-release versions compared as text, so `1.0.0rc10` sorted before
+  `1.0.0rc9` and `1.0.0b10` before `1.0.0b2`. Advisory claims are routinely
+  written against a pre-release, and this reaches boundary selection through
+  the release below an introduced version. No corpus result changes: released
+  versions are filtered out before the affected comparison runs, so the bug was
+  unreachable rather than harmless.
+- `stripTagPrefix` removed a leading `v` without checking that a digit followed,
+  turning `version-1.2.3` into `ersion-1.2.3`. The tag then failed to parse and
+  was discarded, so a version that was tagged resolved as `no_tag`.
+- `FileAt` reported `no_tag` when a commit object could not be read, and
+  `file_absent` when a blob could not be read after its tree entry was found.
+  Both describe the wrong failure. They now report `commit_unreadable`, a new
+  reason whose remedy is to re-clone rather than to look for a missing tag.
+  `Resolve` reported `no_tag` when the tag iterator itself failed, and now does
+  the same.
+- Duplicate spellings of one version were resolved by byte order, which picks
+  `release-2.0.5` over `v2.0.5` because `r` sorts before `v`. The tag name
+  appears in evidence, so the plainest spelling now wins.
+
 ### Changed
 
 - A rule that sets no match field, or more than one, is now rejected. Two
