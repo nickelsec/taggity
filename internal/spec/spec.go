@@ -64,6 +64,13 @@ type Code struct {
 	// Aliases give earlier names for the same construct, so a rename does not
 	// read as absence. Each is pinned by a human and evaluated
 	// deterministically thereafter.
+	//
+	// The field is in the schema from the first release so a spec written today
+	// needs no migration when model-assisted authoring arrives. NOTHING
+	// EVALUATES IT IN v0.1.0, and Validate rejects a non-empty list rather than
+	// accepting input the engine would discard: an alias exists precisely to
+	// prevent a symbol_not_found UNKNOWN, so ignoring one silently produces the
+	// outcome its author wrote it to avoid.
 	Aliases []Alias `yaml:"aliases,omitempty"`
 }
 
@@ -159,6 +166,15 @@ func (s *Spec) Validate() error {
 	}
 	if strings.ContainsRune(s.Signal.Code.File, '\\') {
 		errs = append(errs, errors.New("signal.code.file must use forward slashes"))
+	}
+	// Reserved, not implemented. Accepting this would discard a field the author
+	// wrote specifically to prevent an UNKNOWN, and report that UNKNOWN anyway.
+	if len(s.Signal.Code.Aliases) > 0 {
+		errs = append(errs, errors.New(
+			"signal.code.aliases is not evaluated in v0.1.0: the field is reserved "+
+				"for model-assisted authoring. Remove it, or qualify "+
+				"signal.code.symbol as Class.method instead — a spec whose aliases "+
+				"are ignored would report UNKNOWN [symbol_not_found] rather than matching"))
 	}
 	switch s.Signal.Code.Rule.Indicates {
 	case "", IndicatesVulnerable, IndicatesFixed:
