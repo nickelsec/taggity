@@ -1,0 +1,25 @@
+# PyYAML arbitrary code execution via yaml.load with the default Loader.
+#
+# Advisory claims: introduced 0, fixed 5.1
+#
+# The vulnerable construct is load() constructing a Loader that can instantiate
+# arbitrary Python objects. Before 5.1 the default was the unsafe Loader; 5.1
+# introduced FullLoader and a warning. Note that load() still calls Loader() in
+# every version, because the fix changed the DEFAULT rather than the call. See
+# expectations.md: this spec is the honest test of what `calls` can express.
+package:
+  ecosystem: PyPI
+  name: pyyaml
+repo: https://github.com/yaml/pyyaml
+advisory: GHSA-rprw-h62v-c2w7
+
+authoring:
+  mode: manual
+  reviewed_by: nick
+
+signal:
+  code:
+    file: lib/yaml/__init__.py
+    symbol: load
+    rule:
+      calls: Loader

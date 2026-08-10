@@ -1,0 +1,30 @@
+# PyYAML improper input validation: FullConstructor.construct_python_object_apply
+# could execute arbitrary code via python/object/apply. Fixed in 5.3.1.
+#
+# Advisory claims: introduced 5.1b7, fixed 5.3.1
+#
+# NOTE ON THIS SPEC. The obvious rule -- "does construct_python_object_apply
+# call make_python_instance" -- is TRUE at every version including the fixed
+# ones, because the 5.3.1 fix changed what make_python_instance does rather
+# than whether it is called. A `calls` rule cannot express that fix.
+#
+# The rule below therefore targets the class registration that actually moved:
+# before 5.3.1, FullConstructor registered the apply constructor; the fix moved
+# that registration to UnsafeConstructor. That IS a structural change, and it is
+# what a `calls` rule can honestly see.
+package:
+  ecosystem: PyPI
+  name: pyyaml
+repo: https://github.com/yaml/pyyaml
+advisory: GHSA-6757-jp84-gxfx
+
+authoring:
+  mode: manual
+  reviewed_by: nick
+
+signal:
+  code:
+    file: lib/yaml/constructor.py
+    symbol: FullConstructor.construct_python_object_apply
+    rule:
+      calls: self.make_python_instance
