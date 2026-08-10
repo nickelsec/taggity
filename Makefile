@@ -1,7 +1,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
 
-.PHONY: all build test lint cover clean
+.PHONY: all build test test-corpus verify lint cover clean release-check
 
 all: lint test build
 
@@ -16,10 +16,17 @@ RACE := $(shell go env CGO_ENABLED | grep -q 1 && command -v gcc >/dev/null 2>&1
 test:
 	go test $(RACE) ./...
 
-# Tests tagged "live" clone real repositories over the network. They are
-# excluded from the default target so the normal suite stays hermetic.
-test-live:
-	go test $(RACE) -tags live ./...
+# Tests tagged "corpus" clone real repositories and check the engine against
+# graded advisories. Excluded from the default target so the normal suite stays
+# hermetic.
+#
+# -count=1 defeats the test cache deliberately: a cached pass is not evidence
+# that the corpus still reproduces, and this target exists to produce evidence.
+test-corpus:
+	go test $(RACE) -tags corpus -count=1 ./...
+
+# Everything the README claims, verified. Not in `all` because it needs network.
+verify: lint test test-corpus
 
 lint:
 	golangci-lint run
