@@ -11,11 +11,36 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 )
 
 // version is injected at build time via
-// -ldflags "-X main.version=$(git describe --tags)".
-var version = "dev"
+// -ldflags "-X main.version=$(git describe --tags)". It stays a package-level
+// var in main because that is the only kind of symbol -X can reach.
+//
+// Empty rather than "dev" so resolveVersion can tell "not injected" from
+// "injected as dev".
+var version = ""
+
+// resolveVersion reports the build's version, preferring the linker-injected
+// value and falling back to the module version the go command stamps into the
+// binary.
+//
+// Without the fallback, `go install github.com/nickelsec/taggity/cmd/taggity@v0.1.0`
+// reports "dev": that path cannot pass ldflags. Every bug report from an
+// installed binary would then be unattributable to a release, which matters
+// more here than usual — a verdict is only reproducible alongside the version
+// that produced it.
+func resolveVersion() string {
+	if version != "" {
+		return version
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok || info.Main.Version == "" || info.Main.Version == "(devel)" {
+		return "dev"
+	}
+	return info.Main.Version
+}
 
 const banner = `
   ◇──◇──◆──◆──◇
@@ -63,7 +88,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	switch cmd {
 	case "version", "--version", "-v":
-		fmt.Fprintln(stdout, version)
+		fmt.Fprintln(stdout, resolveVersion())
 		return nil
 
 	case "help", "--help", "-h":

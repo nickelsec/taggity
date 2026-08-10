@@ -54,6 +54,27 @@ func TestVersionGoesToStdout(t *testing.T) {
 	}
 }
 
+// A verdict is only reproducible alongside the version that produced it, so an
+// installed binary that cannot name its own release makes every bug report
+// unattributable. `go install ...@v0.1.0` cannot pass ldflags, so the linker
+// value and the build-info fallback are both load-bearing.
+func TestResolveVersion(t *testing.T) {
+	original := version
+	t.Cleanup(func() { version = original })
+
+	version = "v1.2.3"
+	if got := resolveVersion(); got != "v1.2.3" {
+		t.Errorf("resolveVersion() = %q, want the linker-injected value", got)
+	}
+
+	// Without injection it falls back to build info, which reads "(devel)" for
+	// a `go test` binary — so this asserts the floor, not a specific version.
+	version = ""
+	if got := resolveVersion(); got == "" {
+		t.Error("resolveVersion() returned empty; it must always name something")
+	}
+}
+
 // Go's flag package stops parsing at the first non-flag argument, so a naive
 // implementation drops every flag written after the positional. That is the
 // natural way to type the command, and it silently ignored --spec.
