@@ -109,10 +109,15 @@ func TestNotVulnerableAssignedOnce(t *testing.T) {
 		t.Fatalf("walking repository: %v", err)
 	}
 
-	// Declaration in verdict.go and the Overall/String references in this
-	// package are structural, not conclusions about a version. The budget
-	// covers those plus the single real assignment in the presence check.
-	const allowed = 4
+	// Four references in this package are structural rather than conclusions
+	// about a version: the constant declaration, its String case, and the two
+	// mentions in Signals.Overall. The fifth is the real one — the single
+	// assignment in predicate.Calls, reached only when the symbol was found and
+	// no qualifying call exists inside it.
+	//
+	// Raising this number means a second code path can now conclude that a
+	// version is unaffected. Do that only with a reason recorded here.
+	const allowed = 5
 
 	if len(sites) > allowed {
 		t.Errorf("NotVulnerable referenced %d times, expected at most %d.\n"+
