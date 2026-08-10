@@ -12,7 +12,7 @@ func TestBannerOnBareInvocation(t *testing.T) {
 	if err := run(nil, &out, &errOut); err != nil {
 		t.Fatalf("bare invocation returned %v", err)
 	}
-	for _, want := range []string{"TAGGITY", "hunt the tags", "taggity check", "taggity audit"} {
+	for _, want := range []string{"taggity", "vulnerable", "taggity check", "taggity audit"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("banner output missing %q", want)
 		}

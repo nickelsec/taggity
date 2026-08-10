@@ -43,11 +43,11 @@ func resolveVersion() string {
 }
 
 const banner = `
-  ◇──◇──◆──◆──◇
-     [ TAGGITY ]
-       └─ hunt the tags
-
-  testing where it breaks.
+     ┌─ taggity ─┐
+     │           ▼
+  ◇──◇──◇──◆──◆──◇
+           └──┬──┘
+          vulnerable
 `
 
 const usage = `
