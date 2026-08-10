@@ -1,0 +1,42 @@
+# OpenStack Vitrage eval injection (CVE-2026-28370). create_predicate built a
+# lambda as a string from a caller-supplied query dict and ran it through
+# eval(), so anyone able to reach the Vitrage API could execute code as the
+# service user. The fix replaces the string-building with _create_query_function,
+# which composes real callables from an operator table.
+#
+# The first DANGER-SHAPED case in the corpus. Both earlier multi-branch
+# advisories were fixed by adding a guard, which forced `indicates: fixed` and
+# made every verdict read backwards. Here the fix REMOVES the dangerous call, so
+# the spec asks the question the `calls` rule was designed for and verdicts read
+# the natural way:
+#
+#   VULNERABLE     (eval present) -> the fix is missing
+#   NOT_VULNERABLE (eval absent)  -> the fix is applied
+#
+# Advisory claims FOUR ranges, one per maintenance branch:
+#   < 12.0.1
+#   >= 13.0.0.0rc1, < 13.0.1
+#   >= 14.0.0.0rc1, < 14.0.1
+#   >= 15.0.0.0rc1, < 15.0.1
+#
+# Checked by hand before running: eval is present at 12.0.0, 13.0.0, 14.0.0 and
+# 15.0.0, and absent at 12.0.1, 13.0.1, 14.0.1 and 15.0.1. The advisory appears
+# correct at every boundary, which is the point of including it. A tool that
+# only ever gets exercised on wrong advisories has never demonstrated that it
+# stays quiet on right ones.
+package:
+  ecosystem: PyPI
+  name: vitrage
+repo: https://github.com/openstack/vitrage
+advisory: PYSEC-2026-564
+
+authoring:
+  mode: manual
+  reviewed_by: nick
+
+signal:
+  code:
+    file: vitrage/graph/query.py
+    symbol: create_predicate
+    rule:
+      calls: eval
