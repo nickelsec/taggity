@@ -260,11 +260,100 @@ the redis run establishing that it is the fragile one. A rule kind that can
 express "this argument is unvalidated" would fit these cases better than
 inverting polarity does.
 
+## PYSEC-2026-564 — OpenStack Vitrage, the negative control
+
+Deliberately chosen to be **danger-shaped** and **correct**. Vitrage's
+`create_predicate` built a lambda as a string from a caller-supplied query dict
+and ran it through `eval()`; the fix replaces that with `_create_query_function`,
+composing real callables from an operator table. The dangerous call is *removed*,
+so this is the polarity the `calls` rule was designed for — no inversion.
+
+The advisory patches **four maintenance branches**:
+
+```
+claims  < 12.0.1
+claims  >= 13.0.0.0rc1, < 13.0.1
+claims  >= 14.0.0.0rc1, < 14.0.1
+claims  >= 15.0.0.0rc1, < 15.0.1
+
+61 tags in the repository, 8 probed (13.1%)
+
+version    eval present?  rule                   outcome
+12.0.0     PRESENT        below-fixed            consistent
+12.0.1     absent         fixed                  consistent
+13.0.0     PRESENT        below-fixed            consistent
+13.0.1     absent         fixed                  consistent
+14.0.0     PRESENT        below-fixed            consistent
+14.0.1     absent         fixed                  consistent
+15.0.0     PRESENT        below-fixed            consistent
+15.0.1     absent         fixed                  consistent
+
+0 finding(s) · 8 consistent · 0 narrower · 0 gap(s)
+```
+
+**Every boundary agrees, and the report is empty.** All four backported fixes
+were located unaided. Verified by hand first: `eval` is present at 12.0.0,
+13.0.0, 14.0.0 and 15.0.0 and absent at each fix.
+
+This is the case the corpus was missing. A tool only ever exercised on wrong
+advisories has never demonstrated that it stays quiet on right ones, and a false
+correction filed against a maintainer is the most expensive way this project can
+fail. Staying silent here is the result.
+
+### The defect this run exposed — fixed
+
+It was not silent on the first run. It reported **twelve disagreements**, spanning
+0.7.0 through 11.0.0, every one of them false.
+
+`SelectBoundaries` tracked which release lines an advisory "mentions" by taking
+the major version of each literal `introduced` and `fixed` event. The first
+Vitrage claim is `introduced: 0, fixed: 12.0.1` — which covers *everything ever
+released before 12.0.1* — but only major 12 was marked. Lines 0 through 11 looked
+like silence, so the `unmentioned-line` rule probed the newest release of each,
+found `eval` (correctly), and called each one a disagreement with an advisory
+that explicitly warns about them.
+
+Fixed by treating an open-below claim as covering every earlier line. Probes fell
+from 20 to 8, the twelve false findings disappeared, and the redis 5.x–8.x
+finding — which depends on lines *above* the claims — is unaffected. Both
+directions are pinned by regression tests.
+
+This is the most serious defect found so far. The earlier two were reporting
+problems; this one manufactured findings out of correct advisories, in the
+direction that gets a maintainer's time wasted.
+
+### What it says about `unmentioned-line`
+
+Third outing, third distinct behaviour:
+
+| advisory | fired on | result |
+|---|---|---|
+| redis-py | 5.x–8.x, above the claims | true, immaterial (guard replaced in 4.5.5) |
+| MLflow | 0.9.1, 1.30.0 | honest `symbol_not_found` gaps |
+| Vitrage | 0.7.0–11.0.0, below an open claim | **twelve false positives** |
+
+The Vitrage case was a bug rather than a property of the rule, and it is now
+fixed. But the pattern across all three is consistent: **the rule's value depends
+entirely on where the unmentioned line sits relative to the claims.** Above them
+it is doing the job it was written for. Below an open-below claim it was pure
+noise. That is a stronger argument for release-line distance awareness than
+either earlier run made on its own.
+
 ## Next
 
-Two multi-branch cases audited, one real finding. The boundary rules generalised:
-both located their fixes unaided, and both stayed under 7% of tags probed.
+Three multi-branch advisories audited: one real finding, one clean agreement, one
+serious false-positive bug caught by the clean case.
 
-The open question is no longer whether the engine works but whether the rule
-vocabulary matches the shape of real fixes. Two for two on guard-shaped fixes
-suggests it does not, quite.
+Two things the third run settled:
+
+**Corpus acquisition is not the bottleneck.** An earlier concern was that
+suitable advisories had to be hand-picked from the ~110 backport-correction PRs
+in `github/advisory-database`, of which only two were usable. Querying
+`pypa/advisory-database` directly finds **2,450 PyPI advisories with two or more
+independent fixed ranges**, and 84 of those are danger-shaped with a linked fix
+commit. The supply is there; the earlier search was just aimed at the wrong seam.
+
+**The negative control matters more than the next finding.** The Vitrage bug was
+only visible because the advisory was known-correct in advance. Findings-only
+testing would have shown twelve plausible disagreements on an unfamiliar package
+and there would have been no reason to doubt them.

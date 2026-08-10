@@ -85,6 +85,18 @@ func SelectBoundaries(claims []Claim, available []git.TagRef) []Boundary {
 			}
 			if maj, ok := majorOf(c.Fixed); ok {
 				mentioned[maj] = true
+				// "introduced: 0" means every release before Fixed, not just
+				// Fixed's own line. Marking only the literal major left every
+				// earlier line looking like silence, so an advisory that
+				// already covers them reported them as disagreements. On
+				// PYSEC-2026-564 that was twelve false findings from a claim
+				// reading "< 12.0.1", each one a version the advisory does
+				// warn about.
+				if c.Introduced == "" || c.Introduced == "0" {
+					for m := range maj {
+						mentioned[m] = true
+					}
+				}
 			}
 		}
 	}

@@ -165,3 +165,63 @@ func itoa(n int) string {
 	}
 	return string(b)
 }
+
+// An open-below claim covers every earlier release line, not just the line its
+// fixed version happens to sit on.
+//
+// This is the PYSEC-2026-564 regression. Vitrage claims "< 12.0.1" among its
+// four ranges, which covers everything ever released before 12.0.1. Marking
+// only major 12 as mentioned left lines 0 through 11 looking like silence, so
+// the unmentioned-line rule probed the newest release of each and reported
+// twelve disagreements — every one of them a version the advisory does warn
+// about. Twelve false findings on an advisory that was correct.
+func TestSelectBoundariesTreatsOpenBelowClaimAsCoveringEarlierLines(t *testing.T) {
+	available := tags(
+		"9.0.0", "10.0.0", "11.0.0",
+		"12.0.0", "12.0.1",
+		"13.0.0", "13.0.1",
+	)
+	claims := []Claim{
+		{Introduced: "0", Fixed: "12.0.1"},
+		{Introduced: "13.0.0", Fixed: "13.0.1"},
+	}
+
+	got := rules(SelectBoundaries(claims, available))
+	for _, v := range []string{"9.0.0", "10.0.0", "11.0.0"} {
+		if r, ok := got[v]; ok {
+			t.Errorf("%s probed as %q; it is inside the claim \"< 12.0.1\" and "+
+				"is not an unmentioned line", v, r)
+		}
+	}
+
+	// The edges of both ranges must still be probed.
+	for v, want := range map[string]string{
+		"12.0.0": RuleBelowFixed,
+		"12.0.1": RuleFixed,
+		"13.0.0": RuleBelowFixed,
+		"13.0.1": RuleFixed,
+	} {
+		if got[v] != want {
+			t.Errorf("%s selected by %q, want %q", v, got[v], want)
+		}
+	}
+}
+
+// The narrowing above must not silence the case the rule exists for: a line
+// ABOVE every claimed range is still unexamined territory, and a fix that never
+// made it there is the most common way a published range is wrong.
+func TestSelectBoundariesStillProbesLinesAboveTheClaims(t *testing.T) {
+	available := tags("1.0.0", "2.0.0", "3.0.0", "3.0.1", "4.0.0", "5.0.0")
+	claims := []Claim{{Introduced: "0", Fixed: "3.0.1"}}
+
+	got := rules(SelectBoundaries(claims, available))
+	for _, v := range []string{"4.0.0", "5.0.0"} {
+		if got[v] != RuleUnmentioned {
+			t.Errorf("%s selected by %q, want %q: the advisory says nothing "+
+				"about this line", v, got[v], RuleUnmentioned)
+		}
+	}
+	if _, ok := got["1.0.0"]; ok {
+		t.Error("1.0.0 is below the claim's fixed version and is already covered")
+	}
+}

@@ -35,6 +35,10 @@ earned one yet.
   demonstrably wrong. Under an `indicates: fixed` rule, an over-claimed version
   classifies as `narrower-than-claimed`, which was never rendered. Found while
   auditing GHSA-wxj7-3fx5-pp9m.
+- Boundary selection treated an open-below claim (`introduced: 0`) as covering
+  only the release line of its fixed version, so every earlier line looked
+  unmentioned and was probed as suspicious silence. On PYSEC-2026-564 that
+  produced twelve false findings against an advisory that is correct.
 - `RuleString` rendered both polarities identically, so an evidence record or
   an exported OSV document could not distinguish "calls X, which is the danger"
   from "calls X, which is the fix". Inverted-polarity rules now render

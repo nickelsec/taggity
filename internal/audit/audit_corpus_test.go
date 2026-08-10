@@ -213,3 +213,91 @@ func TestAuditMLflowOverclaimsThreeZero(t *testing.T) {
 			"must not render that as zero findings")
 	}
 }
+
+// TestAuditVitrageAgreesWithACorrectAdvisory is the corpus negative control.
+//
+// PYSEC-2026-564 patches an eval injection in OpenStack Vitrage across FOUR
+// maintenance branches (12.0.1, 13.0.1, 14.0.1, 15.0.1). Checked by hand, the
+// advisory is right at every boundary: eval is present at 12.0.0, 13.0.0,
+// 14.0.0 and 15.0.0 and absent at each fix.
+//
+// A tool only ever exercised on wrong advisories has never shown that it stays
+// quiet on right ones, and a false correction filed against a maintainer is the
+// most expensive way this project can fail. Every probed boundary must classify
+// consistent, and the report must contain nothing at all.
+//
+// This is also the corpus's first DANGER-shaped case. Both earlier multi-branch
+// advisories were fixed by adding a guard, forcing `indicates: fixed`; here the
+// fix removes the dangerous call, so the audit runs the polarity the `calls`
+// rule was designed for.
+func TestAuditVitrageAgreesWithACorrectAdvisory(t *testing.T) {
+	sp, err := spec.Load(corpusPath("PYSEC-2026-564.yaml"))
+	if err != nil {
+		t.Fatalf("spec: %v", err)
+	}
+	adv, err := audit.LoadAdvisory(corpusPath("PYSEC-2026-564.json"))
+	if err != nil {
+		t.Fatalf("advisory: %v", err)
+	}
+	repo, err := git.OpenOrClone(sp.Repo)
+	if err != nil {
+		t.Fatalf("clone: %v", err)
+	}
+	_, allTags, err := repo.Tags()
+	if err != nil {
+		t.Fatalf("tags: %v", err)
+	}
+
+	claims := adv.Claims(sp.Package.Name)
+	if len(claims) != 4 {
+		t.Fatalf("expected four claimed ranges, got %d: this advisory is the "+
+			"four-branch case", len(claims))
+	}
+
+	boundaries := audit.SelectBoundaries(claims, allTags)
+	rep := audit.Run(&check.Checker{Source: repo}, sp, adv, boundaries)
+
+	t.Logf("\n%s  %s", rep.AdvisoryID, rep.Package)
+	for _, res := range rep.Results {
+		t.Log(res.Describe())
+	}
+
+	// Nothing to report. Any finding here is a false positive against an
+	// advisory that is correct.
+	for _, f := range rep.Findings() {
+		t.Errorf("false finding %s %v: the advisory is correct at every boundary",
+			f.Span(), f.Rules)
+	}
+	for _, o := range rep.Overclaims() {
+		t.Errorf("false overclaim %s %v", o.Span(), o.Rules)
+	}
+	for _, u := range rep.Unknowns() {
+		t.Errorf("gap %s [%s]: query.py and create_predicate exist throughout",
+			u.Span(), u.Reason)
+	}
+
+	// All four backported fixes must be located unaided, and eval must still be
+	// present in the release immediately below each one.
+	verdict := map[string]taggity.Verdict{}
+	for _, res := range rep.Results {
+		verdict[res.Boundary.Version] = res.Signals.Overall()
+	}
+	for _, fixed := range []string{"12.0.1", "13.0.1", "14.0.1", "15.0.1"} {
+		if verdict[fixed] != taggity.NotVulnerable {
+			t.Errorf("%s = %v, want NOT_VULNERABLE: the advisory names it as fixed",
+				fixed, verdict[fixed])
+		}
+	}
+	for _, affected := range []string{"12.0.0", "13.0.0", "14.0.0", "15.0.0"} {
+		if verdict[affected] != taggity.Vulnerable {
+			t.Errorf("%s = %v, want VULNERABLE: eval is still present there",
+				affected, verdict[affected])
+		}
+	}
+
+	// Four ranges over 61 tags must not turn into a full scan.
+	if len(rep.Results) > 12 {
+		t.Errorf("probed %d versions for four ranges; boundary probing should "+
+			"stay proportional to the edges", len(rep.Results))
+	}
+}
