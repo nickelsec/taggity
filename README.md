@@ -172,10 +172,15 @@ looking entirely correct.
   whether the run worked, not what it found, so that a loop over versions is
   usable. Read the verdict on stdout, or pass `--quiet` to get it alone.
 
-Some fixes add a guard rather than removing a dangerous call. Those specs set
-`indicates: fixed` and their verdicts read inverted. It works, but it is the
-weaker direction: a guard that disappears may have been reimplemented rather
-than removed.
+Most fixes add a guard rather than removing a dangerous call, so most specs set
+`indicates: fixed` and their verdicts read inverted. That is the weaker
+direction: a guard that disappears may have been reimplemented rather than
+removed, which happened twice in the corpus.
+
+Expect to hit it. Filtering the PyPI advisory database for multi-range
+advisories whose fix deletes a dangerous call leaves seven candidates out of
+1549 packages, and all seven are single-range. Of nine advisories audited here,
+only two removed a call.
 
 ## Development
 
