@@ -110,7 +110,7 @@ Flags:
 }
 
 func buildOSV(rep *audit.Report, sp *spec.Spec) osvDoc {
-	matchMeansVuln := sp.Signal.Code.Rule.MatchMeansVulnerable()
+	matchMeansVuln := sp.MatchMeansVulnerable()
 
 	var affected []string
 	var gaps []string
@@ -154,8 +154,8 @@ func buildOSV(rep *audit.Report, sp *spec.Spec) osvDoc {
 		"taggity": map[string]any{
 			"method":                "static-predicate-boundary-probe",
 			"rule":                  sp.RuleString(),
-			"symbol":                sp.Signal.Code.Symbol,
-			"file":                  sp.Signal.Code.File,
+			"symbol":                sp.Primary().Symbol,
+			"file":                  sp.Primary().File,
 			"matcher":               predicate.MatcherName,
 			"matcher_version":       predicate.MatcherVersion,
 			"probed_versions":       len(rep.Results),

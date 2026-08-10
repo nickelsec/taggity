@@ -65,6 +65,24 @@ That one is the PyYAML case. `load()` constructs a `Loader` in every released
 version, so asking about the call cannot find the boundary; asking about the
 default puts it at 5.1, where the advisory says it is.
 
+A fix can also span files, with the sink in one module and the guard added in
+another. Use `code_any` for that, and the version counts as affected if any
+location matches:
+
+```yaml
+signal:
+  code_any:
+    - file: src/handler.py
+      symbol: proxy
+      rule: { calls: requests.request }
+    - file: src/validator.py
+      symbol: validate
+      rule: { calls: re.fullmatch }
+```
+
+If one location cannot be read the result is `UNKNOWN`, not `NOT_VULNERABLE`.
+A location that was never examined is not a location found clean.
+
 Then run it against a version, or against a whole advisory:
 
 ```sh

@@ -41,11 +41,30 @@ type Authoring struct {
 	ReviewedBy string `yaml:"reviewed_by,omitempty"`
 }
 
-// Signal groups the evidence sources. Only Code is implemented; the others are
+// Signal groups the evidence sources. Only code is implemented; the others are
 // declared so their absence reads as "not evaluated" rather than "not
 // applicable".
 type Signal struct {
-	Code Code `yaml:"code"`
+	// Code is a single location, for the common case.
+	Code Code `yaml:"code,omitempty"`
+
+	// CodeAny holds several locations, and the version is affected if any of
+	// them matches. A fix can span files: the sink in one module and the guard
+	// added in a validator in another.
+	//
+	// Only "any" exists. An "all" combinator would let one location's UNKNOWN
+	// turn the whole result into NOT_VULNERABLE unless the three-valued
+	// conjunction is exactly right, and that is the direction that under-reports.
+	// It waits until it has its own adversarial fixtures.
+	CodeAny []Code `yaml:"code_any,omitempty"`
+}
+
+// Locations returns every code location this signal evaluates, in order.
+func (s Signal) Locations() []Code {
+	if len(s.CodeAny) > 0 {
+		return s.CodeAny
+	}
+	return []Code{s.Code}
 }
 
 // Code locates the vulnerable construct in source.
@@ -222,35 +241,79 @@ func (s *Spec) Validate() error {
 	if s.Package.Name == "" {
 		errs = append(errs, errors.New("package.name is required"))
 	}
-	if s.Signal.Code.File == "" {
-		errs = append(errs, errors.New("signal.code.file is required"))
-	}
-	if s.Signal.Code.Symbol == "" {
-		errs = append(errs, errors.New("signal.code.symbol is required"))
-	}
-	if err := s.Signal.Code.Rule.validate(); err != nil {
-		errs = append(errs, err)
-	}
-	if strings.ContainsRune(s.Signal.Code.File, '\\') {
-		errs = append(errs, errors.New("signal.code.file must use forward slashes"))
-	}
-	// Reserved, not implemented. Accepting this would discard a field the author
-	// wrote specifically to prevent an UNKNOWN, and report that UNKNOWN anyway.
-	if len(s.Signal.Code.Aliases) > 0 {
+	if s.Signal.Code.File != "" && len(s.Signal.CodeAny) > 0 {
 		errs = append(errs, errors.New(
-			"signal.code.aliases is not evaluated in v0.1.0: the field is reserved "+
-				"for model-assisted authoring. Remove it, or qualify "+
-				"signal.code.symbol as Class.method instead. A spec whose aliases "+
-				"are ignored would report UNKNOWN [symbol_not_found] rather than matching"))
+			"signal sets both code and code_any; use one or the other"))
 	}
-	switch s.Signal.Code.Rule.Indicates {
+	for i, loc := range s.Signal.Locations() {
+		field := "signal.code"
+		if len(s.Signal.CodeAny) > 0 {
+			field = fmt.Sprintf("signal.code_any[%d]", i)
+		}
+		errs = append(errs, loc.validate(field)...)
+
+		// Polarity decides how every verdict in a report is read, so a spec
+		// cannot mix directions. Two locations disagreeing would make one of
+		// them mean the opposite of what the report says it means.
+		if i > 0 && loc.Rule.MatchMeansVulnerable() != s.Signal.CodeAny[0].Rule.MatchMeansVulnerable() {
+			errs = append(errs, fmt.Errorf(
+				"%s.rule.indicates disagrees with the first location; every "+
+					"location in a code_any list must share one polarity", field))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// validate reports every problem with one code location. field names the
+// location so an error points at the right entry in a code_any list.
+func (c Code) validate(field string) []error {
+	var errs []error
+	if c.File == "" {
+		errs = append(errs, fmt.Errorf("%s.file is required", field))
+	}
+	if c.Symbol == "" {
+		errs = append(errs, fmt.Errorf("%s.symbol is required", field))
+	}
+	if err := c.Rule.validate(); err != nil {
+		errs = append(errs, fmt.Errorf("%s.rule: %w", field, err))
+	}
+	if strings.ContainsRune(c.File, '\\') {
+		errs = append(errs, fmt.Errorf("%s.file must use forward slashes", field))
+	}
+	switch c.Rule.Indicates {
 	case "", IndicatesVulnerable, IndicatesFixed:
 	default:
 		errs = append(errs, fmt.Errorf(
-			"signal.code.rule.indicates is %q, must be %q or %q",
-			s.Signal.Code.Rule.Indicates, IndicatesVulnerable, IndicatesFixed))
+			"%s.rule.indicates is %q, must be %q or %q",
+			field, c.Rule.Indicates, IndicatesVulnerable, IndicatesFixed))
 	}
-	return errors.Join(errs...)
+	// Reserved, not implemented. Accepting this would discard a field the author
+	// wrote specifically to prevent an UNKNOWN, and report that UNKNOWN anyway.
+	if len(c.Aliases) > 0 {
+		errs = append(errs, fmt.Errorf(
+			"%s.aliases is not evaluated in v0.1.0: the field is reserved for "+
+				"model-assisted authoring. Remove it, or qualify the symbol as "+
+				"Class.method instead. A spec whose aliases are ignored would "+
+				"report UNKNOWN [symbol_not_found] rather than matching", field))
+	}
+	return errs
+}
+
+// Primary returns the first code location, which is the one a single-location
+// spec describes and the one a report cites when summarising a multi-location
+// spec.
+func (s *Spec) Primary() Code {
+	locs := s.Signal.Locations()
+	return locs[0]
+}
+
+// MatchMeansVulnerable reports the spec's polarity.
+//
+// Polarity belongs to the spec rather than to a location: a report reads every
+// verdict the same way, so a multi-location spec cannot mix directions. The
+// first location decides, and Validate rejects the rest disagreeing.
+func (s *Spec) MatchMeansVulnerable() bool {
+	return s.Primary().Rule.MatchMeansVulnerable()
 }
 
 // RuleString renders the rule for evidence records.
@@ -261,13 +324,27 @@ func (s *Spec) Validate() error {
 // was asked that reaches an evidence record or an exported OSV document. A
 // reader who cannot tell which question was asked cannot reproduce the answer.
 func (s *Spec) RuleString() string {
-	rule := s.Signal.Code.Rule
-	r := "calls: " + rule.Calls
-	if param, value, ok := rule.Default(); ok {
-		r = "defaults: " + param + "=" + value
-	}
-	if !rule.MatchMeansVulnerable() {
-		return r + " (indicates: fixed)"
+	locs := s.Signal.Locations()
+	r := locs[0].Rule.String()
+	if len(locs) > 1 {
+		// A reader has to know the verdict came from several questions, not one.
+		return fmt.Sprintf("any of %d, first: %s", len(locs), r)
 	}
 	return r
+}
+
+// String renders the question a rule asks, including its polarity.
+//
+// Every evidence record carries this, and it is the only statement of what was
+// asked that reaches a reader. The same target means opposite things under the
+// two polarities, so a string that omitted it could not be reproduced from.
+func (r Rule) String() string {
+	q := "calls: " + r.Calls
+	if param, value, ok := r.Default(); ok {
+		q = "defaults: " + param + "=" + value
+	}
+	if !r.MatchMeansVulnerable() {
+		return q + " (indicates: fixed)"
+	}
+	return q
 }

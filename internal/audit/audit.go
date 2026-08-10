@@ -204,7 +204,7 @@ func Run(c *check.Checker, sp *spec.Spec, adv *Advisory, boundaries []Boundary) 
 		Claims:     adv.Claims(sp.Package.Name),
 	}
 
-	matchMeansVuln := sp.Signal.Code.Rule.MatchMeansVulnerable()
+	matchMeansVuln := sp.MatchMeansVulnerable()
 
 	for _, b := range boundaries {
 		sig := c.Version(sp, b.Version)
