@@ -3,11 +3,11 @@
 [![CI](https://github.com/nickelsec/taggity/actions/workflows/ci.yml/badge.svg)](https://github.com/nickelsec/taggity/actions/workflows/ci.yml)
 
 ```
-  ◇──◇──◆──◆──◇
-     [ TAGGITY ]
-       └─ hunt the tags
-
-  testing where it breaks.
+     ┌─ taggity ─┐
+     │           ▼
+  ◇──◇──◇──◆──◆──◇
+           └──┬──┘
+          vulnerable
 ```
 
 Checks whether a published advisory's affected version range matches the source.
