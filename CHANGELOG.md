@@ -21,5 +21,8 @@ earned one yet.
   gosec, and CodeQL.
 - `depguard` rules that make the engine/LLM separation a build failure rather
   than a review comment.
+- Working CLI: `check`, `audit`, `init`, and `export`.
+- `export` records unreviewed disagreements separately from established
+  versions, so an unresolved observation is never published as a claim.
 
 [Unreleased]: https://github.com/nickelsec/taggity/commits/main
