@@ -120,6 +120,12 @@ removed a release after the fix and replaced with a different mechanism.
 `taggity export` keeps unreviewed disagreements out of its OSV output for that
 reason.
 
+Some of them hold up. PYSEC-2021-382 splits qutebrowser's CVE-2021-41146 into
+`< 1.8.0` and `>= 2.0.0, < 2.4.0`, which leaves 1.8.0 through 1.14.1 implied
+safe. The guard exists in no 1.x release, the advisory's own text says the fix
+landed in 2.4.0, and the GHSA record for the same CVE uses one correct range of
+`>= 1.7.0, < 2.4.0`. Eleven minor releases marked safe that are not.
+
 `taggity init` will scaffold a spec if you would rather not write the YAML by
 hand.
 

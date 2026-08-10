@@ -357,3 +357,69 @@ func TestAuditPyYAMLDefaults(t *testing.T) {
 		t.Errorf("false overclaim %s %v", o.Span(), o.Rules)
 	}
 }
+
+// TestAuditQutebrowserUnderReport is the corpus case for the failure the whole
+// design exists to catch: an advisory marking vulnerable versions as safe.
+//
+// PYSEC-2021-382 splits CVE-2021-41146 into two ranges, "< 1.8.0" and
+// ">= 2.0.0, < 2.4.0", which leaves 1.8.0 through 1.14.1 unmentioned and
+// therefore implied safe. The guard exists in no 1.x release: the whole
+// --untrusted-args mechanism arrives in 2.4.0, which the advisory's own text
+// states. GHSA-vw27-fwjf-5qxm covers the same CVE with a single correct range
+// of >= 1.7.0, < 2.4.0.
+//
+// Anyone running 1.8.x through 1.14.x is not being told to upgrade, which is
+// the only unacceptable direction.
+func TestAuditQutebrowserUnderReport(t *testing.T) {
+	sp, err := spec.Load(corpusPath("PYSEC-2021-382.yaml"))
+	if err != nil {
+		t.Fatalf("spec: %v", err)
+	}
+	adv, err := audit.LoadAdvisory(corpusPath("PYSEC-2021-382.json"))
+	if err != nil {
+		t.Fatalf("advisory: %v", err)
+	}
+	repo, err := git.OpenOrClone(sp.Repo)
+	if err != nil {
+		t.Fatalf("clone: %v", err)
+	}
+	_, allTags, err := repo.Tags()
+	if err != nil {
+		t.Fatalf("tags: %v", err)
+	}
+
+	boundaries := audit.SelectBoundaries(adv.Claims(sp.Package.Name), allTags)
+	rep := audit.Run(&check.Checker{Source: repo}, sp, adv, boundaries)
+
+	t.Logf("\n%s  %s", rep.AdvisoryID, rep.Package)
+	for _, res := range rep.Results {
+		t.Log(res.Describe())
+	}
+
+	verdict := map[string]taggity.Verdict{}
+	for _, res := range rep.Results {
+		verdict[res.Boundary.Version] = res.Signals.Overall()
+	}
+
+	// The guard arrives at 2.4.0 and exists nowhere before it. Under inverted
+	// polarity VULNERABLE means the fix is present.
+	if verdict["2.4.0"] != taggity.Vulnerable {
+		t.Errorf("2.4.0 = %v, want VULNERABLE: the guard lands here",
+			verdict["2.4.0"])
+	}
+	if verdict["1.8.0"] != taggity.NotVulnerable {
+		t.Errorf("1.8.0 = %v, want NOT_VULNERABLE: the guard does not exist in 1.x",
+			verdict["1.8.0"])
+	}
+
+	// The finding itself. 1.8.0 is named as a fixed version and is not fixed.
+	var spans []string
+	for _, f := range rep.Findings() {
+		spans = append(spans, f.Span())
+		t.Logf("  FINDING  %-16s %-15s %v", f.Span(), f.Verdict, f.Rules)
+	}
+	if len(spans) == 0 {
+		t.Fatal("no finding reported; the advisory marks 1.8.0 as fixed when " +
+			"the guard does not exist until 2.4.0")
+	}
+}
