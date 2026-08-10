@@ -151,40 +151,12 @@ func TestAuditBoundariesAreCheap(t *testing.T) {
 // Overclaims rather than Findings, and why Overclaims has to be rendered: the
 // report said "0 finding(s)" for an advisory that is demonstrably wrong.
 func TestAuditMLflowOverclaimsThreeZero(t *testing.T) {
-	sp, err := spec.Load(corpusPath("GHSA-wxj7-3fx5-pp9m.yaml"))
-	if err != nil {
-		t.Fatalf("spec: %v", err)
-	}
-	adv, err := audit.LoadAdvisory(corpusPath("GHSA-wxj7-3fx5-pp9m.json"))
-	if err != nil {
-		t.Fatalf("advisory: %v", err)
-	}
-	repo, err := git.OpenOrClone(sp.Repo)
-	if err != nil {
-		t.Fatalf("clone: %v", err)
-	}
-	_, allTags, err := repo.Tags()
-	if err != nil {
-		t.Fatalf("tags: %v", err)
-	}
+	rep := runCorpusAudit(t, "GHSA-wxj7-3fx5-pp9m")
 
-	claims := adv.Claims(sp.Package.Name)
-	if len(claims) != 2 {
-		t.Fatalf("expected two claimed ranges, got %d", len(claims))
+	if n := len(rep.Claims); n != 2 {
+		t.Fatalf("claimed ranges = %d, want 2", n)
 	}
-
-	boundaries := audit.SelectBoundaries(claims, allTags)
-	rep := audit.Run(&check.Checker{Source: repo}, sp, adv, boundaries)
-
-	t.Logf("\n%s  %s", rep.AdvisoryID, rep.Package)
-	for _, res := range rep.Results {
-		t.Log(res.Describe())
-	}
-
-	guard := map[string]taggity.Verdict{}
-	for _, res := range rep.Results {
-		guard[res.Boundary.Version] = res.Signals.Overall()
-	}
+	guard := verdicts(rep)
 
 	// Both branches' fixes must be located without being told where they are.
 	for _, want := range []string{"2.22.2", "3.1.0"} {
@@ -231,57 +203,20 @@ func TestAuditMLflowOverclaimsThreeZero(t *testing.T) {
 // fix removes the dangerous call, so the audit runs the polarity the `calls`
 // rule was designed for.
 func TestAuditVitrageAgreesWithACorrectAdvisory(t *testing.T) {
-	sp, err := spec.Load(corpusPath("PYSEC-2026-564.yaml"))
-	if err != nil {
-		t.Fatalf("spec: %v", err)
-	}
-	adv, err := audit.LoadAdvisory(corpusPath("PYSEC-2026-564.json"))
-	if err != nil {
-		t.Fatalf("advisory: %v", err)
-	}
-	repo, err := git.OpenOrClone(sp.Repo)
-	if err != nil {
-		t.Fatalf("clone: %v", err)
-	}
-	_, allTags, err := repo.Tags()
-	if err != nil {
-		t.Fatalf("tags: %v", err)
+	rep := runCorpusAudit(t, "PYSEC-2026-564")
+
+	if n := len(rep.Claims); n != 4 {
+		t.Fatalf("claimed ranges = %d, want 4: this advisory is the "+
+			"four-branch case", n)
 	}
 
-	claims := adv.Claims(sp.Package.Name)
-	if len(claims) != 4 {
-		t.Fatalf("expected four claimed ranges, got %d: this advisory is the "+
-			"four-branch case", len(claims))
-	}
-
-	boundaries := audit.SelectBoundaries(claims, allTags)
-	rep := audit.Run(&check.Checker{Source: repo}, sp, adv, boundaries)
-
-	t.Logf("\n%s  %s", rep.AdvisoryID, rep.Package)
-	for _, res := range rep.Results {
-		t.Log(res.Describe())
-	}
-
-	// Nothing to report. Any finding here is a false positive against an
-	// advisory that is correct.
-	for _, f := range rep.Findings() {
-		t.Errorf("false finding %s %v: the advisory is correct at every boundary",
-			f.Span(), f.Rules)
-	}
-	for _, o := range rep.Overclaims() {
-		t.Errorf("false overclaim %s %v", o.Span(), o.Rules)
-	}
-	for _, u := range rep.Unknowns() {
-		t.Errorf("gap %s [%s]: query.py and create_predicate exist throughout",
-			u.Span(), u.Reason)
-	}
+	// query.py and create_predicate exist throughout, so there is nothing to
+	// report and no honest gap either.
+	requireSilent(t, rep, false)
 
 	// All four backported fixes must be located unaided, and eval must still be
 	// present in the release immediately below each one.
-	verdict := map[string]taggity.Verdict{}
-	for _, res := range rep.Results {
-		verdict[res.Boundary.Version] = res.Signals.Overall()
-	}
+	verdict := verdicts(rep)
 	for _, fixed := range []string{"12.0.1", "13.0.1", "14.0.1", "15.0.1"} {
 		if verdict[fixed] != taggity.NotVulnerable {
 			t.Errorf("%s = %v, want NOT_VULNERABLE: the advisory names it as fixed",
@@ -309,35 +244,8 @@ func TestAuditVitrageAgreesWithACorrectAdvisory(t *testing.T) {
 // vulnerability was in the default argument: 5.1 changed Loader=Loader to
 // Loader=None. With a defaults rule the boundary resolves exactly.
 func TestAuditPyYAMLDefaults(t *testing.T) {
-	sp, err := spec.Load(corpusPath("GHSA-rprw-h62v-c2w7-defaults.yaml"))
-	if err != nil {
-		t.Fatalf("spec: %v", err)
-	}
-	adv, err := audit.LoadAdvisory(corpusPath("GHSA-rprw-h62v-c2w7.json"))
-	if err != nil {
-		t.Fatalf("advisory: %v", err)
-	}
-	repo, err := git.OpenOrClone(sp.Repo)
-	if err != nil {
-		t.Fatalf("clone: %v", err)
-	}
-	_, allTags, err := repo.Tags()
-	if err != nil {
-		t.Fatalf("tags: %v", err)
-	}
-
-	boundaries := audit.SelectBoundaries(adv.Claims(sp.Package.Name), allTags)
-	rep := audit.Run(&check.Checker{Source: repo}, sp, adv, boundaries)
-
-	t.Logf("\n%s  %s", rep.AdvisoryID, rep.Package)
-	for _, res := range rep.Results {
-		t.Log(res.Describe())
-	}
-
-	verdict := map[string]taggity.Verdict{}
-	for _, res := range rep.Results {
-		verdict[res.Boundary.Version] = res.Signals.Overall()
-	}
+	rep := runCorpusAudit(t, "GHSA-rprw-h62v-c2w7", "GHSA-rprw-h62v-c2w7-defaults")
+	verdict := verdicts(rep)
 
 	// The advisory names 5.1 as the fix, and the engine must agree without
 	// being told where to look.
@@ -349,13 +257,9 @@ func TestAuditPyYAMLDefaults(t *testing.T) {
 		t.Errorf("4.1 = %v, want VULNERABLE: Loader=Loader is declared there", v)
 	}
 
-	// The advisory is correct, so nothing should be reported.
-	for _, f := range rep.Findings() {
-		t.Errorf("false finding %s %v", f.Span(), f.Rules)
-	}
-	for _, o := range rep.Overclaims() {
-		t.Errorf("false overclaim %s %v", o.Span(), o.Rules)
-	}
+	// The advisory is correct, so nothing should be reported. Gaps are allowed:
+	// lib/yaml/__init__.py does not exist in the oldest tags.
+	requireSilent(t, rep, true)
 }
 
 // TestAuditQutebrowserUnderReport is the corpus case for the failure the whole
@@ -371,35 +275,8 @@ func TestAuditPyYAMLDefaults(t *testing.T) {
 // Anyone running 1.8.x through 1.14.x is not being told to upgrade, which is
 // the only unacceptable direction.
 func TestAuditQutebrowserUnderReport(t *testing.T) {
-	sp, err := spec.Load(corpusPath("PYSEC-2021-382.yaml"))
-	if err != nil {
-		t.Fatalf("spec: %v", err)
-	}
-	adv, err := audit.LoadAdvisory(corpusPath("PYSEC-2021-382.json"))
-	if err != nil {
-		t.Fatalf("advisory: %v", err)
-	}
-	repo, err := git.OpenOrClone(sp.Repo)
-	if err != nil {
-		t.Fatalf("clone: %v", err)
-	}
-	_, allTags, err := repo.Tags()
-	if err != nil {
-		t.Fatalf("tags: %v", err)
-	}
-
-	boundaries := audit.SelectBoundaries(adv.Claims(sp.Package.Name), allTags)
-	rep := audit.Run(&check.Checker{Source: repo}, sp, adv, boundaries)
-
-	t.Logf("\n%s  %s", rep.AdvisoryID, rep.Package)
-	for _, res := range rep.Results {
-		t.Log(res.Describe())
-	}
-
-	verdict := map[string]taggity.Verdict{}
-	for _, res := range rep.Results {
-		verdict[res.Boundary.Version] = res.Signals.Overall()
-	}
+	rep := runCorpusAudit(t, "PYSEC-2021-382")
+	verdict := verdicts(rep)
 
 	// The guard arrives at 2.4.0 and exists nowhere before it. Under inverted
 	// polarity VULNERABLE means the fix is present.
@@ -421,5 +298,153 @@ func TestAuditQutebrowserUnderReport(t *testing.T) {
 	if len(spans) == 0 {
 		t.Fatal("no finding reported; the advisory marks 1.8.0 as fixed when " +
 			"the guard does not exist until 2.4.0")
+	}
+}
+
+// runCorpusAudit loads a spec and its advisory, clones the repository, and
+// probes the boundaries. The setup is identical for every corpus case, so the
+// tests that use it can be about the result rather than the plumbing.
+//
+// The spec and the advisory usually share a basename. One advisory carries two
+// specs asking it different questions, so the spec name may be given
+// separately.
+func runCorpusAudit(t *testing.T, name string, specName ...string) *audit.Report {
+	t.Helper()
+
+	spFile := name
+	if len(specName) > 0 {
+		spFile = specName[0]
+	}
+	sp, err := spec.Load(corpusPath(spFile + ".yaml"))
+	if err != nil {
+		t.Fatalf("spec: %v", err)
+	}
+	adv, err := audit.LoadAdvisory(corpusPath(name + ".json"))
+	if err != nil {
+		t.Fatalf("advisory: %v", err)
+	}
+	repo, err := git.OpenOrClone(sp.Repo)
+	if err != nil {
+		t.Fatalf("clone: %v", err)
+	}
+	_, allTags, err := repo.Tags()
+	if err != nil {
+		t.Fatalf("tags: %v", err)
+	}
+
+	boundaries := audit.SelectBoundaries(adv.Claims(sp.Package.Name), allTags)
+	rep := audit.Run(&check.Checker{Source: repo}, sp, adv, boundaries)
+
+	t.Logf("\n%s  %s", rep.AdvisoryID, rep.Package)
+	for _, res := range rep.Results {
+		t.Log(res.Describe())
+	}
+	return rep
+}
+
+// verdicts indexes a report by version, for asserting on specific boundaries.
+func verdicts(rep *audit.Report) map[string]taggity.Verdict {
+	out := map[string]taggity.Verdict{}
+	for _, res := range rep.Results {
+		out[res.Boundary.Version] = res.Signals.Overall()
+	}
+	return out
+}
+
+// requireSilent asserts that an audit reported nothing at all. Gaps are allowed
+// only where the test says they are expected, since a gap is an honest answer
+// but still means a boundary went unexamined.
+func requireSilent(t *testing.T, rep *audit.Report, allowGaps bool) {
+	t.Helper()
+	for _, f := range rep.Findings() {
+		t.Errorf("false finding %s %v: the advisory is correct at every boundary",
+			f.Span(), f.Rules)
+	}
+	for _, o := range rep.Overclaims() {
+		t.Errorf("false overclaim %s %v", o.Span(), o.Rules)
+	}
+	if allowGaps {
+		return
+	}
+	for _, u := range rep.Unknowns() {
+		t.Errorf("gap %s [%s]: every boundary should have been readable",
+			u.Span(), u.Reason)
+	}
+}
+
+// TestAuditLitestarAgreesWithACorrectAdvisory is a negative control across
+// three maintenance branches.
+//
+// PYSEC-2026-2605 patches a path traversal in Litestar's static file serving:
+// get_fs_info joined a caller-supplied path and checked containment without
+// normalising first. The fix adds os.path.normpath and shipped on 2.6.4, 2.7.2
+// and 2.8.3. Checked by hand, the advisory is right at every boundary.
+func TestAuditLitestarAgreesWithACorrectAdvisory(t *testing.T) {
+	rep := runCorpusAudit(t, "PYSEC-2026-2605")
+
+	if n := len(rep.Claims); n != 3 {
+		t.Fatalf("claimed ranges = %d, want 3", n)
+	}
+
+	// Older releases predate litestar/static_files/base.py, so those probes are
+	// honest file_absent gaps rather than answers.
+	requireSilent(t, rep, true)
+
+	v := verdicts(rep)
+	// All three backported fixes must be located without being told where.
+	// Inverted polarity: VULNERABLE means the guard is present.
+	for _, fixed := range []string{"2.6.4", "2.7.2", "2.8.3"} {
+		if v[fixed] != taggity.Vulnerable {
+			t.Errorf("%s = %v, want VULNERABLE: the advisory names it as fixed",
+				fixed, v[fixed])
+		}
+	}
+	for _, affected := range []string{"2.6.3", "2.7.1", "2.8.2"} {
+		if v[affected] != taggity.NotVulnerable {
+			t.Errorf("%s = %v, want NOT_VULNERABLE: the guard is absent there",
+				affected, v[affected])
+		}
+	}
+}
+
+// TestAuditBugsinkAgreesWithACorrectAdvisory is the widest negative control in
+// the corpus: four maintenance branches.
+//
+// PYSEC-2026-1226 patches a path traversal in Bugsink's ingestion, where a
+// caller-supplied event_id was used directly as a filename. The fix normalises
+// it through uuid.UUID(event_id).hex and shipped on 1.4.3, 1.5.5, 1.6.4 and
+// 1.7.4.
+//
+// The advisory also lists ">= 1.6.0, < 1.6.4" twice. Boundary selection has to
+// collapse the duplicate rather than probing those versions again.
+func TestAuditBugsinkAgreesWithACorrectAdvisory(t *testing.T) {
+	rep := runCorpusAudit(t, "PYSEC-2026-1226")
+
+	// Five claimed ranges, one of them a duplicate of another.
+	if n := len(rep.Claims); n != 5 {
+		t.Fatalf("claimed ranges = %d, want 5 including the duplicate", n)
+	}
+
+	requireSilent(t, rep, false)
+
+	v := verdicts(rep)
+	for _, fixed := range []string{"1.4.3", "1.5.5", "1.6.4", "1.7.4"} {
+		if v[fixed] != taggity.Vulnerable {
+			t.Errorf("%s = %v, want VULNERABLE: the advisory names it as fixed",
+				fixed, v[fixed])
+		}
+	}
+	for _, affected := range []string{"1.4.2", "1.5.4", "1.6.3", "1.7.3"} {
+		if v[affected] != taggity.NotVulnerable {
+			t.Errorf("%s = %v, want NOT_VULNERABLE: the guard is absent there",
+				affected, v[affected])
+		}
+	}
+
+	// The duplicated range must not double the probe count. Four branches with
+	// two edges each, plus the newest unmentioned line, is nine.
+	if len(rep.Results) != 9 {
+		t.Errorf("probed %d versions, want 9: the duplicated range should "+
+			"collapse rather than probing 1.6.x twice", len(rep.Results))
 	}
 }

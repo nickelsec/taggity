@@ -366,6 +366,11 @@ candidates; five were audited.
 | PYSEC-2026-797 | cobbler | 2 | 2 disagreements, both explained |
 | PYSEC-2026-1127 | ansys-geometry | 2 | not audited: fix was a rename plus lint pragmas |
 
+Three of these are now corpus cases with tests: the qutebrowser finding, and
+litestar and bugsink as negative controls. Cobbler is not, because a spec whose
+guard name was renamed out of existence would keep reporting disagreements that
+are not findings, which is noise in a regression suite rather than evidence.
+
 ### The finding: PYSEC-2021-382 marks vulnerable versions as safe
 
 qutebrowser's Windows installer registers a `qutebrowserurl:` URL handler, and a
@@ -447,3 +452,16 @@ disagreement-to-finding ratio is workable at scale: this run produced three
 disagreements, of which one was real. A researcher auditing fifty advisories
 would read fifty reports to file perhaps ten corrections, which is worth it, but
 only if resolving each disagreement stays a matter of minutes.
+
+The corpus now holds six audited advisories with tests, three of them negative
+controls spanning three, four and four maintenance branches. Those are the cases
+that catch false positives, and one of them already has: the Vitrage run found a
+boundary-selection bug that was manufacturing twelve findings out of a correct
+advisory.
+
+Still missing: a finding that came through the natural polarity. Both real
+findings so far were reached with `indicates: fixed`, which the design itself
+treats as the weaker evidence, and cobbler showed again why. Of eight
+multi-branch advisories, only Vitrage removed a dangerous call, and it was
+correct. Until a danger-shaped spec produces a finding, half the rule vocabulary
+is unproven in the field.

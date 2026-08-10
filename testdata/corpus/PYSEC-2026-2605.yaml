@@ -1,0 +1,37 @@
+# Litestar path traversal in static file serving (CVE-2024-32982).
+# StaticFiles.get_fs_info joined a caller-supplied path against the configured
+# directory and checked containment with commonpath, but without normalising
+# first, so a ../ sequence escaped the directory.
+#
+# The fix adds os.path.normpath before the containment check, and was released
+# on three maintenance branches: 2.6.4, 2.7.2 and 2.8.3.
+#
+# A NEGATIVE CONTROL. Checked by hand before running: normpath is absent at
+# 2.6.3, 2.7.1 and 2.8.2 and present at each fix and at 2.9.0. The advisory is
+# right at all six boundaries, and the audit must report nothing.
+#
+# The corpus needs cases like this as much as it needs findings. A tool only
+# ever exercised on wrong advisories has never shown it stays quiet on right
+# ones, and a false correction filed against a maintainer is the most expensive
+# way this project can fail. The Vitrage case caught a twelve-false-positive bug
+# for exactly this reason.
+#
+# INVERTED POLARITY. The rule matches the guard, so VULNERABLE means the fix is
+# present.
+package:
+  ecosystem: PyPI
+  name: litestar
+repo: https://github.com/litestar-org/litestar
+advisory: PYSEC-2026-2605
+
+authoring:
+  mode: manual
+  reviewed_by: nick
+
+signal:
+  code:
+    file: litestar/static_files/base.py
+    symbol: StaticFiles.get_fs_info
+    rule:
+      calls: os.path.normpath
+      indicates: fixed
