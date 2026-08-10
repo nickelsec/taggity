@@ -11,6 +11,17 @@ earned one yet.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-10
+
+The deterministic engine. No model runs anywhere in this release, and
+`internal/llm` does not exist — which is what makes "a model cannot affect a
+verdict" true by construction rather than by policy.
+
+Audited against three real multi-branch advisories: one confirmed finding
+(GHSA-wxj7-3fx5-pp9m over-claims MLflow 3.0.0 and 3.0.1), one that resolved to
+*the advisory is correct* after investigation, and one negative control that the
+engine correctly says nothing about. Zero under-reports throughout.
+
 ### Added
 
 - Domain types: `Verdict`, `Signals`, `Evidence`, and machine-readable `Reason`
@@ -28,6 +39,13 @@ earned one yet.
   advisory claims are affected but where the engine found the fix are shown
   rather than reduced to a count. They remain excluded from findings and from
   export.
+- `audit` and `export` refuse to run a spec against an advisory it does not
+  name, rather than producing a confident report about the wrong one.
+- Release binaries for Linux, macOS, and Windows on amd64 and arm64, with
+  sha256 checksums and an SPDX SBOM per archive. Built with `CGO_ENABLED=0` and
+  `-trimpath`, and timestamped from the commit, so they are reproducible.
+- `go install` builds report the module version via `runtime/debug` when no
+  linker flag was supplied, so an installed binary is attributable to a release.
 
 ### Fixed
 
@@ -43,6 +61,18 @@ earned one yet.
   an exported OSV document could not distinguish "calls X, which is the danger"
   from "calls X, which is the fix". Inverted-polarity rules now render
   `calls: X (indicates: fixed)`.
+- `make test-live` ran the ordinary hermetic suite. No file carried a `live`
+  build tag, so the corpus tests behind `//go:build corpus` never ran from a
+  Make target — while the README advertised it as the way to reproduce every
+  claim the project makes. The target is now `make test-corpus`, with
+  `-count=1` so a cached pass cannot stand in for a real one.
+- `signal.code.aliases` was parsed, documented, and then silently discarded:
+  nothing evaluated it, so a spec written to survive a rename still reported
+  `UNKNOWN [symbol_not_found]`. It is now rejected with an error naming the
+  alternative. The field stays in the schema, so a v0.2.0 spec needs no
+  migration.
+- The top-level usage omitted `--package`, which `taggity init` requires, so
+  the documented command failed on copy-paste.
 - `Repo.Tags` discarded the error returned by the tag iterator.
 - Cache directories are created 0750 rather than 0755.
 
@@ -52,4 +82,5 @@ earned one yet.
   reason. The first real run reported 203 issues; the remainder were fixed.
   `golangci-lint` and `gosec` both report clean.
 
-[Unreleased]: https://github.com/nickelsec/taggity/commits/main
+[Unreleased]: https://github.com/nickelsec/taggity/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/nickelsec/taggity/releases/tag/v0.1.0
