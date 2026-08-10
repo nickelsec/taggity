@@ -89,8 +89,8 @@ func printAudit(w io.Writer, rep *audit.Report, sp *spec.Spec, tagCount int, ver
 	for _, c := range rep.Claims {
 		fmt.Fprintf(w, "  claims  %s\n", c)
 	}
-	fmt.Fprintf(w, "  rule    %s in %s\n", sp.RuleString(), sp.Signal.Code.Symbol)
-	if sp.Signal.Code.Rule.Indicates == spec.IndicatesFixed {
+	fmt.Fprintf(w, "  rule    %s in %s\n", sp.RuleString(), sp.Primary().Symbol)
+	if !sp.MatchMeansVulnerable() {
 		fmt.Fprintln(w, "          (matches the FIX; a match means the fix is present)")
 	}
 	fmt.Fprintf(w, "  probed  %d of %d tags\n", len(rep.Results), tagCount)

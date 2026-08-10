@@ -54,42 +54,84 @@ func (c *Checker) Version(s *spec.Spec, version string) taggity.Signals {
 		})
 	}
 
-	src, reason := c.Source.FileAt(commit, s.Signal.Code.File)
-	if reason != taggity.ReasonNone {
-		return unknown(reason, taggity.Evidence{
-			Signal:  "present",
-			Verdict: taggity.Unknown,
-			Commit:  commit,
-			Tag:     tag,
-			File:    s.Signal.Code.File,
-			Rule:    s.RuleString(),
-			Detail:  fmt.Sprintf("%s not present at %s", s.Signal.Code.File, tag),
+	locations := s.Signal.Locations()
+	evidence := make([]taggity.Evidence, 0, len(locations))
+	verdicts := make([]taggity.Verdict, 0, len(locations))
+	reasons := make([]taggity.Reason, 0, len(locations))
+
+	for _, loc := range locations {
+		src, reason := c.Source.FileAt(commit, loc.File)
+		if reason != taggity.ReasonNone {
+			verdicts = append(verdicts, taggity.Unknown)
+			reasons = append(reasons, reason)
+			evidence = append(evidence, taggity.Evidence{
+				Signal:  "present",
+				Verdict: taggity.Unknown,
+				Commit:  commit,
+				Tag:     tag,
+				File:    loc.File,
+				Rule:    loc.Rule.String(),
+				Detail:  fmt.Sprintf("%s not present at %s", loc.File, tag),
+			})
+			continue
+		}
+
+		res := evaluate(src, loc)
+		verdicts = append(verdicts, res.Verdict)
+		reasons = append(reasons, res.Reason)
+		evidence = append(evidence, taggity.Evidence{
+			Signal:         "present",
+			Verdict:        res.Verdict,
+			Commit:         commit,
+			Tag:            tag,
+			File:           loc.File,
+			Symbol:         loc.Symbol,
+			StartByte:      res.Definition.Start,
+			EndByte:        res.Definition.End,
+			Rule:           loc.Rule.String(),
+			Matcher:        predicate.MatcherName,
+			MatcherVersion: predicate.MatcherVersion,
+			Source:         "static",
+			Detail:         detail(res, loc),
 		})
 	}
 
-	res := evaluate(src, s)
-
-	ev := taggity.Evidence{
-		Signal:         "present",
-		Verdict:        res.Verdict,
-		Commit:         commit,
-		Tag:            tag,
-		File:           s.Signal.Code.File,
-		Symbol:         s.Signal.Code.Symbol,
-		StartByte:      res.Definition.Start,
-		EndByte:        res.Definition.End,
-		Rule:           s.RuleString(),
-		Matcher:        predicate.MatcherName,
-		MatcherVersion: predicate.MatcherVersion,
-		Source:         "static",
-		Detail:         detail(res, s),
-	}
-
+	verdict, reason := combineAny(verdicts, reasons)
 	return taggity.Signals{
-		Present:  res.Verdict,
-		Reason:   res.Reason,
-		Evidence: []taggity.Evidence{ev},
+		Present:  verdict,
+		Reason:   reason,
+		Evidence: evidence,
 	}
+}
+
+// combineAny reduces per-location verdicts under "any": the construct is
+// present if it was found anywhere.
+//
+// The three-valued part is the whole point. A match anywhere is decisive, so
+// one location's UNKNOWN cannot suppress another's VULNERABLE. But with no
+// match, an UNKNOWN means some location was never really examined, and calling
+// that NOT_VULNERABLE would report safety the engine did not establish.
+func combineAny(verdicts []taggity.Verdict, reasons []taggity.Reason) (taggity.Verdict, taggity.Reason) {
+	if len(verdicts) == 0 {
+		return taggity.Unknown, taggity.ReasonUnsupportedRule
+	}
+
+	firstUnknown := -1
+	for i, v := range verdicts {
+		if v == taggity.Vulnerable {
+			return taggity.Vulnerable, taggity.ReasonNone
+		}
+		if v != taggity.NotVulnerable && firstUnknown < 0 {
+			firstUnknown = i
+		}
+	}
+	if firstUnknown >= 0 {
+		return taggity.Unknown, reasons[firstUnknown]
+	}
+	// Every location was examined and none matched. The verdict is whatever the
+	// predicate already concluded for them, which keeps the sole assignment of
+	// NotVulnerable inside internal/predicate.
+	return verdicts[0], taggity.ReasonNone
 }
 
 // evaluate runs the rule kind the spec asks for.
@@ -97,8 +139,7 @@ func (c *Checker) Version(s *spec.Spec, version string) taggity.Signals {
 // A rule kind this build does not implement yields Unknown rather than falling
 // through to any verdict. Validate rejects such a spec before it reaches here,
 // so this is the second of two guards on the same failure.
-func evaluate(src []byte, s *spec.Spec) predicate.Result {
-	code := s.Signal.Code
+func evaluate(src []byte, code spec.Code) predicate.Result {
 	switch code.Rule.Kind() {
 	case "calls":
 		return predicate.Calls(src, code.Symbol, code.Rule.Calls)
@@ -119,22 +160,22 @@ func evaluate(src []byte, s *spec.Spec) predicate.Result {
 	}
 }
 
-func detail(res predicate.Result, s *spec.Spec) string {
+func detail(res predicate.Result, code spec.Code) string {
 	switch res.Reason {
 	case taggity.ReasonSymbolNotFound:
-		return fmt.Sprintf("symbol %s not found", s.Signal.Code.Symbol)
+		return fmt.Sprintf("symbol %s not found", code.Symbol)
 	case taggity.ReasonAmbiguousSymbol:
 		return fmt.Sprintf("symbol %s is defined %d times; qualify it as Class.method",
-			s.Signal.Code.Symbol, len(res.Candidates))
+			code.Symbol, len(res.Candidates))
 	case taggity.ReasonParseFailed:
 		return "source did not parse"
 	case taggity.ReasonUnsupportedRule:
 		return "this build does not implement the rule kind the spec asks for"
 	default:
-		if param, value, ok := s.Signal.Code.Rule.Default(); ok {
-			return fmt.Sprintf("%s declares %s=%s", s.Signal.Code.Symbol, param, value)
+		if param, value, ok := code.Rule.Default(); ok {
+			return fmt.Sprintf("%s declares %s=%s", code.Symbol, param, value)
 		}
-		return fmt.Sprintf("%s calls %s", s.Signal.Code.Symbol, s.Signal.Code.Rule.Calls)
+		return fmt.Sprintf("%s calls %s", code.Symbol, code.Rule.Calls)
 	}
 }
 

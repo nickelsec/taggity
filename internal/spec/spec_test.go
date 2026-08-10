@@ -381,3 +381,110 @@ func TestValidateRejectsEmptyDefaultValue(t *testing.T) {
 		t.Fatal("a defaults rule with an empty value was accepted")
 	}
 }
+
+const multiLocation = `
+package:
+  ecosystem: PyPI
+  name: foo
+repo: https://github.com/example/foo
+signal:
+  code_any:
+    - file: src/handler.py
+      symbol: proxy
+      rule:
+        calls: requests.request
+    - file: src/validator.py
+      symbol: validate
+      rule:
+        calls: re.fullmatch
+`
+
+func TestParseMultipleLocations(t *testing.T) {
+	s, err := spec.Parse([]byte(multiLocation))
+	if err != nil {
+		t.Fatalf("code_any rejected: %v", err)
+	}
+	locs := s.Signal.Locations()
+	if len(locs) != 2 {
+		t.Fatalf("locations = %d, want 2", len(locs))
+	}
+	if locs[0].File != "src/handler.py" || locs[1].File != "src/validator.py" {
+		t.Errorf("locations lost their order: %+v", locs)
+	}
+	// A report has to say the verdict came from several questions.
+	if got := s.RuleString(); !strings.Contains(got, "any of 2") {
+		t.Errorf("RuleString() = %q, want it to name the location count", got)
+	}
+}
+
+func TestSingleLocationStillWorks(t *testing.T) {
+	s, err := spec.Parse([]byte(minimal))
+	if err != nil {
+		t.Fatal(err)
+	}
+	locs := s.Signal.Locations()
+	if len(locs) != 1 || locs[0].File != "src/parser.py" {
+		t.Errorf("locations = %+v, want the single code block", locs)
+	}
+	if strings.Contains(s.RuleString(), "any of") {
+		t.Errorf("RuleString() = %q, want no location count for one location",
+			s.RuleString())
+	}
+}
+
+func TestValidateRejectsBothCodeAndCodeAny(t *testing.T) {
+	src := strings.Replace(minimal, "signal:\n  code:", `signal:
+  code_any:
+    - file: b.py
+      symbol: g
+      rule:
+        calls: exec
+  code:`, 1)
+
+	if _, err := spec.Parse([]byte(src)); err == nil {
+		t.Fatal("a signal setting both code and code_any was accepted")
+	}
+}
+
+// Errors must name which entry failed, or an author with five locations cannot
+// tell which one to fix.
+func TestValidateNamesTheFailingLocation(t *testing.T) {
+	src := strings.Replace(multiLocation, "      symbol: validate\n", "", 1)
+
+	_, err := spec.Parse([]byte(src))
+	if err == nil {
+		t.Fatal("a location missing its symbol was accepted")
+	}
+	if !strings.Contains(err.Error(), "code_any[1]") {
+		t.Errorf("error should name the failing index, got: %v", err)
+	}
+}
+
+// Polarity decides how every verdict in a report is read, so locations cannot
+// disagree: one of them would mean the opposite of what the report says.
+func TestValidateRejectsMixedPolarity(t *testing.T) {
+	src := strings.Replace(multiLocation,
+		"        calls: re.fullmatch",
+		"        calls: re.fullmatch\n        indicates: fixed", 1)
+
+	_, err := spec.Parse([]byte(src))
+	if err == nil {
+		t.Fatal("locations with disagreeing polarity were accepted")
+	}
+	if !strings.Contains(err.Error(), "polarity") {
+		t.Errorf("error should explain the constraint, got: %v", err)
+	}
+}
+
+func TestConsistentPolarityAcrossLocationsIsFine(t *testing.T) {
+	src := strings.ReplaceAll(multiLocation,
+		"      rule:\n", "      rule:\n        indicates: fixed\n")
+
+	s, err := spec.Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("matching polarity rejected: %v", err)
+	}
+	if s.MatchMeansVulnerable() {
+		t.Error("spec polarity should follow its locations")
+	}
+}

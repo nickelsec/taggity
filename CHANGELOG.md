@@ -17,6 +17,10 @@ compatibility promise and neither has earned one yet.
   `Loader(stream)` either way, which a `calls` rule cannot distinguish. A
   parameter with no default never matches, so a version that made the argument
   required is not reported as carrying the dangerous default.
+- `signal.code_any`, a list of code locations where the version is affected if
+  any of them matches. A fix can span files: the sink in one module, the guard
+  added in a validator in another. `signal.code` still takes a single location
+  and existing specs are unchanged.
 - `taggity init --defaults param=value`.
 - `unsupported_rule` reason, so a spec written for a newer build yields
   `UNKNOWN` rather than being evaluated as though its question had been
@@ -27,6 +31,15 @@ compatibility promise and neither has earned one yet.
 - A rule that sets no match field, or more than one, is now rejected. Two
   fields would mean the engine answers one and ignores the other, giving the
   author a narrower question than they wrote.
+- Evidence records carry the polarity of the rule that produced them, and
+  `check` lists every location when a spec has more than one.
+
+### Notes
+
+Only `any` exists as a combinator. An `all` combinator would let one location's
+UNKNOWN turn the whole result into NOT_VULNERABLE unless the three-valued
+conjunction is exactly right, and that is the direction that under-reports. It
+waits until it has its own adversarial fixtures.
 
 ## [0.1.0] - 2026-08-10
 

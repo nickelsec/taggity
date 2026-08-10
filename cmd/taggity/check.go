@@ -133,7 +133,7 @@ func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals,
 	}
 
 	fmt.Fprintf(w, "\n%s@%s\n", sp.Package.Name, version)
-	fmt.Fprintf(w, "  rule    %s in %s\n", sp.RuleString(), sp.Signal.Code.Symbol)
+	fmt.Fprintf(w, "  rule    %s in %s\n", sp.RuleString(), sp.Primary().Symbol)
 
 	ev := taggity.Evidence{}
 	if len(sig.Evidence) > 0 {
@@ -146,6 +146,15 @@ func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals,
 	fmt.Fprintf(w, "  reachable  %-15s not evaluated\n", sig.Reachable)
 	fmt.Fprintf(w, "  triggers   %-15s not evaluated\n", sig.Triggers)
 
+	// With several locations the summary line alone does not say which one
+	// decided the verdict, and under `any` that is the whole question.
+	if len(sig.Evidence) > 1 {
+		fmt.Fprintln(w)
+		for _, e := range sig.Evidence {
+			fmt.Fprintf(w, "    %-15s %s  %s\n", e.Verdict, e.File, e.Detail)
+		}
+	}
+
 	fmt.Fprintf(w, "\n  → %s", overall)
 	if sig.Reason != taggity.ReasonNone {
 		fmt.Fprintf(w, " [%s]", sig.Reason)
@@ -155,7 +164,7 @@ func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals,
 	if ev.Commit != "" {
 		fmt.Fprintf(w, "  at %s (%s) %s\n", ev.Tag, short(ev.Commit), ev.File)
 	}
-	if sp.Signal.Code.Rule.Indicates == spec.IndicatesFixed {
+	if !sp.MatchMeansVulnerable() {
 		fmt.Fprintln(w, "\n  note: this spec matches the FIX, not the danger."+
 			"\n        VULNERABLE here means the fix is present.")
 	}
