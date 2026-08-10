@@ -41,6 +41,17 @@ const (
 (call function: (identifier) @callee) @call
 (call function: (attribute)  @callee) @call
 `
+
+	// Only parameters that carry a default produce these nodes. A parameter with
+	// no default is a bare identifier or a typed_parameter and never matches,
+	// which is what a defaults rule needs: "no default" is not "this default".
+	//
+	// An annotated parameter is a different node type, and annotated code is
+	// common enough that missing it would be a large blind spot.
+	qDefaults = `
+(default_parameter name: (identifier) @param value: (_) @value)
+(typed_default_parameter name: (identifier) @param value: (_) @value)
+`
 )
 
 // Definition is a function or method definition and the bytes it spans.
@@ -70,26 +81,35 @@ type Result struct {
 	Candidates []string
 }
 
-// Calls reports whether symbol calls target within its own scope.
+// scope is a parsed file narrowed to the single definition a spec named.
+type scope struct {
+	lang *ts.Language
+	tree *ts.Tree
+	defs []Definition
+	want Definition
+}
+
+// resolve parses src and locates the one definition the spec asked about.
 //
-// The only path to NotVulnerable is the final return: the symbol was found and
-// no qualifying call exists inside it. Every other outcome is Unknown with a
-// reason, because a failure to answer is not evidence of safety.
-func Calls(src []byte, symbol, target string) Result {
+// It returns a Result instead of a scope whenever the question cannot be
+// answered, so every rule kind shares the same failure vocabulary and none of
+// them can accidentally treat a resolution failure as evidence of absence.
+func resolve(src []byte, symbol string) (scope, *Result) {
+	unknown := func(r taggity.Reason, candidates []string) *Result {
+		return &Result{Verdict: taggity.Unknown, Reason: r, Candidates: candidates}
+	}
+
 	lang := grammars.PythonLanguage()
 	parser := ts.NewParser(lang)
 
 	tree, err := parser.Parse(src)
-	if err != nil {
-		return Result{Verdict: taggity.Unknown, Reason: taggity.ReasonParseFailed}
-	}
-	if tree.RootNode().HasError() {
-		return Result{Verdict: taggity.Unknown, Reason: taggity.ReasonParseFailed}
+	if err != nil || tree.RootNode().HasError() {
+		return scope{}, unknown(taggity.ReasonParseFailed, nil)
 	}
 
 	defs, err := definitions(lang, tree, src)
 	if err != nil {
-		return Result{Verdict: taggity.Unknown, Reason: taggity.ReasonParseFailed}
+		return scope{}, unknown(taggity.ReasonParseFailed, nil)
 	}
 
 	var matched []Definition
@@ -101,48 +121,117 @@ func Calls(src []byte, symbol, target string) Result {
 
 	switch len(matched) {
 	case 0:
-		return Result{
-			Verdict:    taggity.Unknown,
-			Reason:     taggity.ReasonSymbolNotFound,
-			Candidates: names(defs),
-		}
+		return scope{}, unknown(taggity.ReasonSymbolNotFound, names(defs))
 	case 1:
-		// Unambiguous.
+		return scope{lang: lang, tree: tree, defs: defs, want: matched[0]}, nil
 	default:
 		// Answering for either definition would answer a question the spec did
 		// not ask. The spec must qualify the symbol as Class.method.
-		return Result{
-			Verdict:    taggity.Unknown,
-			Reason:     taggity.ReasonAmbiguousSymbol,
-			Candidates: qualifiedNames(matched),
-		}
+		return scope{}, unknown(taggity.ReasonAmbiguousSymbol, qualifiedNames(matched))
 	}
-	want := matched[0]
+}
 
-	qc, err := ts.NewQuery(qCalls, lang)
+// owns reports whether pos belongs to the resolved definition rather than to a
+// nested one.
+func (s scope) owns(pos uint32) bool {
+	if pos < s.want.Start || pos >= s.want.End {
+		return false
+	}
+	owner := innermost(s.defs, pos)
+	return owner != nil && owner.Start == s.want.Start
+}
+
+// Calls reports whether symbol calls target within its own scope.
+//
+// NotVulnerable requires the symbol to have been found and no qualifying call
+// to exist inside it. Every other outcome is Unknown with a reason, because a
+// failure to answer is not evidence of safety.
+func Calls(src []byte, symbol, target string) Result {
+	sc, bad := resolve(src, symbol)
+	if bad != nil {
+		return *bad
+	}
+	want := sc.want
+
+	qc, err := ts.NewQuery(qCalls, sc.lang)
 	if err != nil {
 		return Result{Verdict: taggity.Unknown, Reason: taggity.ReasonParseFailed}
 	}
+	tree := sc.tree
 
 	for _, m := range qc.Execute(tree) {
 		for _, c := range m.Captures {
 			if c.Name != "callee" || c.Text(src) != target {
 				continue
 			}
-			pos := c.Node.StartByte()
-			if pos < want.Start || pos >= want.End {
-				continue
-			}
 			// A call inside a nested definition belongs to that definition, not
 			// to this one. The innermost enclosing definition owns it.
-			if owner := innermost(defs, pos); owner != nil && owner.Start == want.Start {
+			if sc.owns(c.Node.StartByte()) {
 				return Result{Verdict: taggity.Vulnerable, Definition: want}
 			}
 		}
 	}
 
-	// Symbol found, no qualifying call. This is the sole assignment of
-	// NotVulnerable in the repository; see internal/taggity/doc.go.
+	return present(false, want)
+}
+
+// Defaults reports whether symbol declares parameter with the given default
+// value.
+//
+// This covers fixes that change a default rather than adding or removing a
+// call. PyYAML closed its arbitrary-execution bug by changing
+// load(stream, Loader=Loader) to load(stream, Loader=None); the call to Loader
+// is present either way, so a calls rule cannot tell the versions apart.
+//
+// A parameter with no default never matches. Once PyYAML made Loader a required
+// argument the vulnerable default was gone, and reporting that as a match would
+// be wrong in the direction that matters.
+func Defaults(src []byte, symbol, param, value string) Result {
+	sc, bad := resolve(src, symbol)
+	if bad != nil {
+		return *bad
+	}
+	want := sc.want
+
+	qd, err := ts.NewQuery(qDefaults, sc.lang)
+	if err != nil {
+		return Result{Verdict: taggity.Unknown, Reason: taggity.ReasonParseFailed}
+	}
+
+	for _, m := range qd.Execute(sc.tree) {
+		var name, val string
+		var pos uint32
+		var seen bool
+		for _, c := range m.Captures {
+			switch c.Name {
+			case "param":
+				name, pos, seen = c.Text(src), c.Node.StartByte(), true
+			case "value":
+				val = c.Text(src)
+			}
+		}
+		if !seen || name != param || val != value {
+			continue
+		}
+		// Defaults belong to the definition that declares them, so a nested
+		// function's parameters never answer for its parent.
+		if sc.owns(pos) {
+			return Result{Verdict: taggity.Vulnerable, Definition: want}
+		}
+	}
+
+	return present(false, want)
+}
+
+// present converts a completed structural search into a verdict.
+//
+// Every rule kind routes its final answer through here. That keeps the sole
+// assignment of NotVulnerable in one place, which is the invariant
+// internal/taggity/invariant_test.go enforces; see internal/taggity/doc.go.
+func present(found bool, want Definition) Result {
+	if found {
+		return Result{Verdict: taggity.Vulnerable, Definition: want}
+	}
 	return Result{Verdict: taggity.NotVulnerable, Definition: want}
 }
 

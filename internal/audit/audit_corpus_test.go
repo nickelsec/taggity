@@ -301,3 +301,59 @@ func TestAuditVitrageAgreesWithACorrectAdvisory(t *testing.T) {
 			"stay proportional to the edges", len(rep.Results))
 	}
 }
+
+// TestAuditPyYAMLDefaults audits an advisory the calls rule could not express.
+//
+// PyYAML's load() constructs a Loader in every released version, so a presence
+// rule reports the construct throughout and never locates the fix. The
+// vulnerability was in the default argument: 5.1 changed Loader=Loader to
+// Loader=None. With a defaults rule the boundary resolves exactly.
+func TestAuditPyYAMLDefaults(t *testing.T) {
+	sp, err := spec.Load(corpusPath("GHSA-rprw-h62v-c2w7-defaults.yaml"))
+	if err != nil {
+		t.Fatalf("spec: %v", err)
+	}
+	adv, err := audit.LoadAdvisory(corpusPath("GHSA-rprw-h62v-c2w7.json"))
+	if err != nil {
+		t.Fatalf("advisory: %v", err)
+	}
+	repo, err := git.OpenOrClone(sp.Repo)
+	if err != nil {
+		t.Fatalf("clone: %v", err)
+	}
+	_, allTags, err := repo.Tags()
+	if err != nil {
+		t.Fatalf("tags: %v", err)
+	}
+
+	boundaries := audit.SelectBoundaries(adv.Claims(sp.Package.Name), allTags)
+	rep := audit.Run(&check.Checker{Source: repo}, sp, adv, boundaries)
+
+	t.Logf("\n%s  %s", rep.AdvisoryID, rep.Package)
+	for _, res := range rep.Results {
+		t.Log(res.Describe())
+	}
+
+	verdict := map[string]taggity.Verdict{}
+	for _, res := range rep.Results {
+		verdict[res.Boundary.Version] = res.Signals.Overall()
+	}
+
+	// The advisory names 5.1 as the fix, and the engine must agree without
+	// being told where to look.
+	if verdict["5.1"] != taggity.NotVulnerable {
+		t.Errorf("5.1 = %v, want NOT_VULNERABLE: the default changed here",
+			verdict["5.1"])
+	}
+	if v, probed := verdict["4.1"]; probed && v != taggity.Vulnerable {
+		t.Errorf("4.1 = %v, want VULNERABLE: Loader=Loader is declared there", v)
+	}
+
+	// The advisory is correct, so nothing should be reported.
+	for _, f := range rep.Findings() {
+		t.Errorf("false finding %s %v", f.Span(), f.Rules)
+	}
+	for _, o := range rep.Overclaims() {
+		t.Errorf("false overclaim %s %v", o.Span(), o.Rules)
+	}
+}

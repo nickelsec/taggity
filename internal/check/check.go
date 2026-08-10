@@ -67,7 +67,7 @@ func (c *Checker) Version(s *spec.Spec, version string) taggity.Signals {
 		})
 	}
 
-	res := predicate.Calls(src, s.Signal.Code.Symbol, s.Signal.Code.Rule.Calls)
+	res := evaluate(src, s)
 
 	ev := taggity.Evidence{
 		Signal:         "present",
@@ -92,6 +92,33 @@ func (c *Checker) Version(s *spec.Spec, version string) taggity.Signals {
 	}
 }
 
+// evaluate runs the rule kind the spec asks for.
+//
+// A rule kind this build does not implement yields Unknown rather than falling
+// through to any verdict. Validate rejects such a spec before it reaches here,
+// so this is the second of two guards on the same failure.
+func evaluate(src []byte, s *spec.Spec) predicate.Result {
+	code := s.Signal.Code
+	switch code.Rule.Kind() {
+	case "calls":
+		return predicate.Calls(src, code.Symbol, code.Rule.Calls)
+	case "defaults":
+		param, value, ok := code.Rule.Default()
+		if !ok {
+			return predicate.Result{
+				Verdict: taggity.Unknown,
+				Reason:  taggity.ReasonUnsupportedRule,
+			}
+		}
+		return predicate.Defaults(src, code.Symbol, param, value)
+	default:
+		return predicate.Result{
+			Verdict: taggity.Unknown,
+			Reason:  taggity.ReasonUnsupportedRule,
+		}
+	}
+}
+
 func detail(res predicate.Result, s *spec.Spec) string {
 	switch res.Reason {
 	case taggity.ReasonSymbolNotFound:
@@ -101,7 +128,12 @@ func detail(res predicate.Result, s *spec.Spec) string {
 			s.Signal.Code.Symbol, len(res.Candidates))
 	case taggity.ReasonParseFailed:
 		return "source did not parse"
+	case taggity.ReasonUnsupportedRule:
+		return "this build does not implement the rule kind the spec asks for"
 	default:
+		if param, value, ok := s.Signal.Code.Rule.Default(); ok {
+			return fmt.Sprintf("%s declares %s=%s", s.Signal.Code.Symbol, param, value)
+		}
 		return fmt.Sprintf("%s calls %s", s.Signal.Code.Symbol, s.Signal.Code.Rule.Calls)
 	}
 }

@@ -77,4 +77,9 @@ const (
 
 	// ReasonParseFailed means the source could not be parsed.
 	ReasonParseFailed Reason = "parse_failed"
+
+	// ReasonUnsupportedRule means the spec asks for a rule kind this build does
+	// not implement. A spec written for a newer version must not be evaluated
+	// as though its question had been answered.
+	ReasonUnsupportedRule Reason = "unsupported_rule"
 )
