@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -44,11 +45,11 @@ Flags:
 
 	if target == "" || fs.NArg() > 0 {
 		fs.Usage()
-		return fmt.Errorf("expected exactly one <pkg>@<version> argument")
+		return errors.New("expected exactly one <pkg>@<version> argument")
 	}
 	if *specPath == "" {
 		fs.Usage()
-		return fmt.Errorf("--spec is required")
+		return errors.New("--spec is required")
 	}
 
 	pkg, wantVersion, err := splitTarget(target)
@@ -115,11 +116,11 @@ func splitTarget(arg string) (pkg, version string, err error) {
 	if i := strings.LastIndex(arg, "@"); i > 0 {
 		return arg[:i], arg[i+1:], nil
 	}
-	if strings.HasPrefix(arg, "@") {
-		return "", strings.TrimPrefix(arg, "@"), nil
+	if rest, ok := strings.CutPrefix(arg, "@"); ok {
+		return "", rest, nil
 	}
 	if arg == "" {
-		return "", "", fmt.Errorf("empty version")
+		return "", "", errors.New("empty version")
 	}
 	return "", arg, nil
 }

@@ -129,7 +129,7 @@ func TestSelectBoundariesSkipsPrereleases(t *testing.T) {
 }
 
 func TestSelectBoundariesStaysSmall(t *testing.T) {
-	var versions []string
+	versions := make([]string, 0, 50)
 	for minor := range 50 {
 		versions = append(versions, "2."+itoa(minor)+".0")
 	}

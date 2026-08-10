@@ -1,6 +1,7 @@
 package predicate
 
 import (
+	"errors"
 	"fmt"
 
 	ts "github.com/odvcencio/gotreesitter"
@@ -54,7 +55,7 @@ func VerifyGrammar() error {
 		return fmt.Errorf("parsing grammar probe: %w", err)
 	}
 	if tree.RootNode().HasError() {
-		return fmt.Errorf("grammar probe did not parse cleanly")
+		return errors.New("grammar probe did not parse cleanly")
 	}
 
 	checks := []struct {

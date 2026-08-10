@@ -53,6 +53,7 @@ func (v Verdict) String() string {
 type Reason string
 
 const (
+	// ReasonNone is the absence of a reason: the verdict is not Unknown.
 	ReasonNone Reason = ""
 
 	// ReasonNoTag means the version exists upstream but no git tag resolves to
