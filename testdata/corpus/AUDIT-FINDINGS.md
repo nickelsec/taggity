@@ -459,9 +459,26 @@ that catch false positives, and one of them already has: the Vitrage run found a
 boundary-selection bug that was manufacturing twelve findings out of a correct
 advisory.
 
-Still missing: a finding that came through the natural polarity. Both real
-findings so far were reached with `indicates: fixed`, which the design itself
-treats as the weaker evidence, and cobbler showed again why. Of eight
-multi-branch advisories, only Vitrage removed a dangerous call, and it was
-correct. Until a danger-shaped spec produces a finding, half the rule vocabulary
-is unproven in the field.
+## Danger-shaped fixes are rare, and that is the result
+
+Both real findings were reached with `indicates: fixed`, which the design treats
+as the weaker evidence and which cobbler showed again is fragile when a guard is
+renamed rather than removed. So the natural polarity was searched for
+deliberately.
+
+Filtering `pypa/advisory-database` for multi-range advisories whose fix commit
+is a net deletion of a dangerous call leaves **seven** candidates out of 1549
+packages. Every one is single-range: pymatgen, limnoria, searchor, torch,
+django-tastypie, langchain-experimental, tenable-jira-cloud. None has the
+multi-branch shape that produces findings.
+
+That is worth stating as a finding about the domain rather than a gap in the
+tool. **Guard-shaped fixes dominate Python security patches.** Across nine
+audited advisories only Vitrage and pymatgen removed a dangerous call, and both
+advisories were correct. `indicates: fixed` is the primary path, not the
+exception, and the vocabulary should be judged on how well it serves that.
+
+pymatgen (PYSEC-2024-226) is in the corpus as the danger-shaped case: eval on a
+caller-supplied basis-change string, removed in 2024.2.20. Two probes of 424
+tags, both consistent. Its value is that the natural polarity is exercised end
+to end at all, not that it found anything.

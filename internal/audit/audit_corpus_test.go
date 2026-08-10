@@ -198,10 +198,9 @@ func TestAuditMLflowOverclaimsThreeZero(t *testing.T) {
 // most expensive way this project can fail. Every probed boundary must classify
 // consistent, and the report must contain nothing at all.
 //
-// This is also the corpus's first DANGER-shaped case. Both earlier multi-branch
-// advisories were fixed by adding a guard, forcing `indicates: fixed`; here the
-// fix removes the dangerous call, so the audit runs the polarity the `calls`
-// rule was designed for.
+// The fix here removes the dangerous call rather than adding a guard, so the
+// spec needs no polarity inversion. See TestAuditPymatgenDangerShaped for the
+// other case that exercises the natural polarity.
 func TestAuditVitrageAgreesWithACorrectAdvisory(t *testing.T) {
 	rep := runCorpusAudit(t, "PYSEC-2026-564")
 
@@ -446,5 +445,48 @@ func TestAuditBugsinkAgreesWithACorrectAdvisory(t *testing.T) {
 	if len(rep.Results) != 9 {
 		t.Errorf("probed %d versions, want 9: the duplicated range should "+
 			"collapse rather than probing 1.6.x twice", len(rep.Results))
+	}
+}
+
+// TestAuditPymatgenDangerShaped is the corpus case for a fix that removes a
+// dangerous call rather than adding a guard.
+//
+// Every other multi-branch advisory here was fixed by adding a check, so their
+// specs set indicates: fixed and their verdicts read backwards. Pymatgen ran a
+// caller-supplied basis-change string through eval and the fix deletes it, so
+// this spec asks the question the calls rule was designed for and VULNERABLE
+// means what it says.
+//
+// The advisory is correct, so the audit reports nothing. Its value is that the
+// natural polarity is exercised end to end at all.
+func TestAuditPymatgenDangerShaped(t *testing.T) {
+	rep := runCorpusAudit(t, "PYSEC-2024-226")
+
+	sp, err := spec.Load(corpusPath("PYSEC-2024-226.yaml"))
+	if err != nil {
+		t.Fatalf("spec: %v", err)
+	}
+	if !sp.MatchMeansVulnerable() {
+		t.Fatal("this case exists to exercise the natural polarity")
+	}
+
+	requireSilent(t, rep, false)
+
+	v := verdicts(rep)
+	if v["2024.2.8"] != taggity.Vulnerable {
+		t.Errorf("2024.2.8 = %v, want VULNERABLE: eval is still called there",
+			v["2024.2.8"])
+	}
+	if v["2024.2.20"] != taggity.NotVulnerable {
+		t.Errorf("2024.2.20 = %v, want NOT_VULNERABLE: the fix removed eval",
+			v["2024.2.20"])
+	}
+
+	// Two of the three claims name a commit hash where a version belongs.
+	// Those are unprobeable, and selecting them would spend probes to report
+	// gaps that say nothing about the advisory.
+	if len(rep.Results) != 2 {
+		t.Errorf("probed %d versions, want 2: the commit-hash claims are not "+
+			"probeable and should not be selected", len(rep.Results))
 	}
 }
