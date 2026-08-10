@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/nickelsec/taggity/internal/spec"
 	"gopkg.in/yaml.v3"
@@ -19,7 +21,8 @@ func runInit(args []string, stdout, stderr io.Writer) error {
 		ecosystem = fs.String("ecosystem", "PyPI", "registry the package is published to")
 		file      = fs.String("file", "", "repository-relative path to the source file (required)")
 		symbol    = fs.String("symbol", "", "definition to examine, Class.method to disambiguate (required)")
-		calls     = fs.String("calls", "", "call target the rule looks for (required)")
+		calls     = fs.String("calls", "", "call target the rule looks for")
+		defaults  = fs.String("defaults", "", "default parameter the rule looks for, as param=value")
 		indicates = fs.String("indicates", "", "vulnerable (default) or fixed, if the rule matches the guard")
 		advisory  = fs.String("advisory", "", "advisory this spec tests against")
 		out       = fs.String("out", "", "write to this path instead of stdout")
@@ -46,13 +49,17 @@ Flags:
 
 	missing := map[string]string{
 		"--repo": *repo, "--package": *pkg, "--file": *file,
-		"--symbol": *symbol, "--calls": *calls,
+		"--symbol": *symbol,
 	}
 	for flagName, v := range missing {
 		if v == "" {
 			fs.Usage()
 			return fmt.Errorf("%s is required", flagName)
 		}
+	}
+	if (*calls == "") == (*defaults == "") {
+		fs.Usage()
+		return errors.New("exactly one of --calls or --defaults is required")
 	}
 
 	sp := &spec.Spec{
@@ -68,6 +75,13 @@ Flags:
 	sp.Signal.Code.Symbol = *symbol
 	sp.Signal.Code.Rule.Calls = *calls
 	sp.Signal.Code.Rule.Indicates = *indicates
+	if *defaults != "" {
+		param, value, found := strings.Cut(*defaults, "=")
+		if !found {
+			return fmt.Errorf("--defaults must be param=value, got %q", *defaults)
+		}
+		sp.Signal.Code.Rule.Defaults = map[string]string{param: value}
+	}
 
 	// Validate before writing: a spec that cannot be evaluated is worse than no
 	// spec, because it looks like work that was done.

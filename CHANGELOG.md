@@ -8,6 +8,26 @@ compatibility promise and neither has earned one yet.
 
 ## [Unreleased]
 
+### Added
+
+- `defaults` rule kind, asking whether a symbol declares a parameter with a
+  given default value. Some fixes change a signature rather than a call body:
+  PyYAML closed its arbitrary-execution bug by changing
+  `load(stream, Loader=Loader)` to `Loader=None` while still calling
+  `Loader(stream)` either way, which a `calls` rule cannot distinguish. A
+  parameter with no default never matches, so a version that made the argument
+  required is not reported as carrying the dangerous default.
+- `taggity init --defaults param=value`.
+- `unsupported_rule` reason, so a spec written for a newer build yields
+  `UNKNOWN` rather than being evaluated as though its question had been
+  answered.
+
+### Changed
+
+- A rule that sets no match field, or more than one, is now rejected. Two
+  fields would mean the engine answers one and ignores the other, giving the
+  author a narrower question than they wrote.
+
 ## [0.1.0] - 2026-08-10
 
 First release. Deterministic engine, no model involved anywhere in it.

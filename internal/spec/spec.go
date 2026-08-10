@@ -85,6 +85,15 @@ type Rule struct {
 	// does not match a dotted call.
 	Calls string `yaml:"calls,omitempty"`
 
+	// Defaults asks whether the symbol declares a parameter with a given
+	// default value, written as `param: value`.
+	//
+	// Some fixes change a default rather than a call. PyYAML closed its
+	// arbitrary-execution bug by changing load(stream, Loader=Loader) to
+	// Loader=None while still calling Loader(stream) either way, which a calls
+	// rule cannot distinguish. A parameter with no default never matches.
+	Defaults map[string]string `yaml:"defaults,omitempty"`
+
 	// Indicates declares what a match means. Default "vulnerable": the
 	// construct is the danger, as with calls: eval.
 	//
@@ -106,6 +115,65 @@ const (
 // version being affected.
 func (r Rule) MatchMeansVulnerable() bool {
 	return r.Indicates != IndicatesFixed
+}
+
+// Kind names the rule kind this rule asks for.
+func (r Rule) Kind() string {
+	switch {
+	case r.Calls != "":
+		return "calls"
+	case len(r.Defaults) > 0:
+		return "defaults"
+	default:
+		return ""
+	}
+}
+
+// validate reports whether the rule asks exactly one answerable question.
+//
+// Setting two match fields is rejected rather than resolved by precedence. The
+// engine would evaluate one and ignore the other, so a spec whose author
+// expected both to hold would silently get a narrower question than they wrote.
+func (r Rule) validate() error {
+	set := 0
+	if r.Calls != "" {
+		set++
+	}
+	if len(r.Defaults) > 0 {
+		set++
+	}
+
+	switch {
+	case set == 0:
+		return errors.New(
+			"signal.code.rule needs one of: calls, defaults")
+	case set > 1:
+		return errors.New(
+			"signal.code.rule sets more than one of calls and defaults; a rule " +
+				"asks exactly one question, so split this into separate signals")
+	}
+
+	for param, value := range r.Defaults {
+		if param == "" || value == "" {
+			return fmt.Errorf(
+				"signal.code.rule.defaults has an empty parameter or value (%q: %q)",
+				param, value)
+		}
+	}
+	if len(r.Defaults) > 1 {
+		return errors.New(
+			"signal.code.rule.defaults takes one parameter; a rule asks exactly " +
+				"one question")
+	}
+	return nil
+}
+
+// Default returns the single parameter and value a defaults rule asks about.
+func (r Rule) Default() (param, value string, ok bool) {
+	for p, v := range r.Defaults {
+		return p, v, true
+	}
+	return "", "", false
 }
 
 // Alias is a previous name for the symbol, restricted to a version range.
@@ -160,9 +228,8 @@ func (s *Spec) Validate() error {
 	if s.Signal.Code.Symbol == "" {
 		errs = append(errs, errors.New("signal.code.symbol is required"))
 	}
-	if s.Signal.Code.Rule.Calls == "" {
-		errs = append(errs, errors.New(
-			"signal.code.rule.calls is required: v0.1.0 supports only the calls rule"))
+	if err := s.Signal.Code.Rule.validate(); err != nil {
+		errs = append(errs, err)
 	}
 	if strings.ContainsRune(s.Signal.Code.File, '\\') {
 		errs = append(errs, errors.New("signal.code.file must use forward slashes"))
@@ -194,8 +261,12 @@ func (s *Spec) Validate() error {
 // was asked that reaches an evidence record or an exported OSV document. A
 // reader who cannot tell which question was asked cannot reproduce the answer.
 func (s *Spec) RuleString() string {
-	r := "calls: " + s.Signal.Code.Rule.Calls
-	if !s.Signal.Code.Rule.MatchMeansVulnerable() {
+	rule := s.Signal.Code.Rule
+	r := "calls: " + rule.Calls
+	if param, value, ok := rule.Default(); ok {
+		r = "defaults: " + param + "=" + value
+	}
+	if !rule.MatchMeansVulnerable() {
 		return r + " (indicates: fixed)"
 	}
 	return r

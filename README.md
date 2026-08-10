@@ -51,6 +51,20 @@ signal:
       calls: eval
 ```
 
+A rule asks one structural question. `calls` looks for a call in the symbol's
+own scope. `defaults` looks at parameter defaults, which is what you need when
+a fix changed a signature rather than a call body:
+
+```yaml
+    rule:
+      defaults:
+        Loader: Loader
+```
+
+That one is the PyYAML case. `load()` constructs a `Loader` in every released
+version, so asking about the call cannot find the boundary; asking about the
+default puts it at 5.1, where the advisory says it is.
+
 Then run it against a version, or against a whole advisory:
 
 ```sh
@@ -116,10 +130,10 @@ looking entirely correct.
 
 - PyPI only. `package.ecosystem` is recorded and echoed into exported OSV, but
   nothing dispatches on it. There is one code path and it assumes Python.
-- One rule kind, `calls`. It covers `eval`, `exec`, `pickle.loads`,
-  `os.system` and similar sinks. It cannot express a changed default argument,
-  which is how PyYAML's `yaml.load` was fixed, and anything it cannot express
-  is `UNKNOWN`.
+- Two rule kinds. `calls` covers `eval`, `exec`, `pickle.loads`, `os.system`
+  and similar sinks. `defaults` covers a changed default argument, which is how
+  PyYAML's `yaml.load` was fixed. Vulnerabilities of any other shape, such as
+  changed callee behaviour, are `UNKNOWN`.
 - Needs a git repository. No repo, no answer.
 - Assumes the tag is what was published. Uploads from a dirty tree and
   untagged hotfixes are invisible.

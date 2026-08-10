@@ -54,6 +54,24 @@ func TestCorpus(t *testing.T) {
 			},
 		},
 		{
+			// The same advisory as above, asked with a defaults rule. The
+			// boundary the calls rule could not see is located exactly.
+			specFile: "GHSA-rprw-h62v-c2w7-defaults.yaml",
+			claimed:  ">= 0, < 5.1",
+			versions: []expectation{
+				{version: "3.12", want: taggity.Vulnerable},
+				{version: "3.13", want: taggity.Vulnerable},
+				{version: "5.1", want: taggity.NotVulnerable,
+					note: "the fix changed Loader=Loader to Loader=None"},
+				{version: "5.4.1", want: taggity.NotVulnerable},
+				// 6.0 made Loader a required argument. No default at all is not
+				// the dangerous default, and reporting it as one would call a
+				// fixed version vulnerable.
+				{version: "6.0.1", want: taggity.NotVulnerable,
+					note: "Loader has no default here"},
+			},
+		},
+		{
 			specFile: "GHSA-6757-jp84-gxfx.yaml",
 			claimed:  ">= 5.1b7, < 5.3.1",
 			versions: []expectation{

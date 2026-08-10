@@ -18,8 +18,11 @@ not. Absence of the construct is the only genuinely negative evidence
 available.
 
 Every other path returns [Unknown]: no tag, missing file, unparseable version,
-unresolved symbol, ambiguous symbol, parse failure. A failure to answer is not
-evidence of safety.
+unresolved symbol, ambiguous symbol, parse failure, or a rule kind this build
+does not implement. A failure to answer is not evidence of safety.
+
+Rule kinds share that single assignment rather than each having their own. A new
+rule kind adds a way to ask a question, never a new way to conclude safety.
 
 This invariant is enforced mechanically by TestNotVulnerableAssignedOnce, not
 by review. If a second assignment is ever needed, the test must be changed

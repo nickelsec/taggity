@@ -305,3 +305,79 @@ func TestRuleStringRecordsPolarity(t *testing.T) {
 		t.Errorf("rule string lost the target: %q", danger.RuleString())
 	}
 }
+
+// A rule asks exactly one question. Two match fields would mean the engine
+// evaluates one and ignores the other, so a spec whose author expected both to
+// hold would silently get a narrower question than they wrote.
+func TestValidateRejectsMoreThanOneRuleKind(t *testing.T) {
+	src := strings.Replace(minimal,
+		"      calls: eval",
+		"      calls: eval\n      defaults:\n        Loader: Loader", 1)
+
+	_, err := spec.Parse([]byte(src))
+	if err == nil {
+		t.Fatal("a rule setting both calls and defaults was accepted")
+	}
+	if !strings.Contains(err.Error(), "defaults") {
+		t.Errorf("error should name the conflicting field, got: %v", err)
+	}
+}
+
+func TestValidateRejectsRuleWithNoQuestion(t *testing.T) {
+	src := strings.Replace(minimal, "      calls: eval\n", "", 1)
+
+	_, err := spec.Parse([]byte(src))
+	if err == nil {
+		t.Fatal("a rule with no match field was accepted")
+	}
+	for _, want := range []string{"calls", "defaults"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should list %q as an option, got: %v", want, err)
+		}
+	}
+}
+
+func TestDefaultsRuleParsesAndRenders(t *testing.T) {
+	src := strings.Replace(minimal,
+		"      calls: eval",
+		"      defaults:\n        Loader: Loader", 1)
+
+	s, err := spec.Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("defaults rule rejected: %v", err)
+	}
+	if s.Signal.Code.Rule.Kind() != "defaults" {
+		t.Errorf("kind = %q, want defaults", s.Signal.Code.Rule.Kind())
+	}
+	param, value, ok := s.Signal.Code.Rule.Default()
+	if !ok || param != "Loader" || value != "Loader" {
+		t.Errorf("Default() = (%q, %q, %v)", param, value, ok)
+	}
+	// The rule string is the only statement of what was asked that reaches an
+	// evidence record, so it has to name the kind.
+	if got := s.RuleString(); !strings.Contains(got, "defaults") {
+		t.Errorf("RuleString() = %q, want it to name the rule kind", got)
+	}
+}
+
+// A defaults rule with several parameters would be two questions, and the
+// engine answers one rule per signal.
+func TestValidateRejectsMultipleDefaults(t *testing.T) {
+	src := strings.Replace(minimal,
+		"      calls: eval",
+		"      defaults:\n        Loader: Loader\n        mode: unsafe", 1)
+
+	if _, err := spec.Parse([]byte(src)); err == nil {
+		t.Fatal("a defaults rule with two parameters was accepted")
+	}
+}
+
+func TestValidateRejectsEmptyDefaultValue(t *testing.T) {
+	src := strings.Replace(minimal,
+		"      calls: eval",
+		"      defaults:\n        Loader: \"\"", 1)
+
+	if _, err := spec.Parse([]byte(src)); err == nil {
+		t.Fatal("a defaults rule with an empty value was accepted")
+	}
+}

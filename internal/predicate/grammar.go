@@ -15,7 +15,7 @@ const grammarProbe = `class C:
     def m(self):
         return helper(1)
 
-def f():
+def f(stream, Loader=Loader, mode: str = None):
     return mod.helper(2)
 `
 
@@ -23,9 +23,10 @@ def f():
 // grammar changes such that they no longer hold, the queries no longer mean
 // what this package assumes.
 const (
-	probeFuncs   = 2 // C.m and f
-	probeMethods = 1 // C.m
-	probeCalls   = 2 // helper(1) and mod.helper(2)
+	probeFuncs    = 2 // C.m and f
+	probeMethods  = 1 // C.m
+	probeCalls    = 2 // helper(1) and mod.helper(2)
+	probeDefaults = 2 // Loader=Loader plus the annotated mode; `stream` has no default
 )
 
 // VerifyGrammar checks that the queries still match the grammar shipped with
@@ -67,6 +68,7 @@ func VerifyGrammar() error {
 		{"function definitions", qFuncs, "fn", probeFuncs},
 		{"class methods", qMethods, "method", probeMethods},
 		{"call sites", qCalls, "callee", probeCalls},
+		{"default parameters", qDefaults, "param", probeDefaults},
 	}
 
 	for _, c := range checks {

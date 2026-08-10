@@ -39,6 +39,15 @@ path that defaults to `FullLoader`.
 The vulnerability lived in a **default argument value**, and a call rule cannot
 express that.
 
+This is what the `defaults` rule was built for.
+`GHSA-rprw-h62v-c2w7-defaults.yaml` asks the same advisory a different way and
+reports VULNERABLE at 3.12 and 3.13, NOT_VULNERABLE from 5.1 on: the boundary
+the advisory claims. Note 6.0 made `Loader` a required argument, so it has no
+default at all, which the rule correctly does not treat as the dangerous one.
+
+Both specs stay in the corpus. The `calls` one is the standing record of what
+that rule kind cannot see.
+
 ### GHSA-6757-jp84-gxfx: `python/object/apply` code execution
 
 Claimed range `>= 5.1b7, < 5.3.1`. Verified by reading
@@ -61,7 +70,7 @@ Vulnerability shapes seen so far and whether `calls` reaches them:
 | shape | expressible? |
 |---|---|
 | dangerous sink invoked (`eval`, `os.system`, `pickle.loads`) | yes |
-| default argument changed (`Loader=Loader` to `Loader=None`) | **no** |
+| default argument changed (`Loader=Loader` to `Loader=None`) | yes, `defaults` |
 | behaviour of the callee changed | **no** |
 | module-level registration moved | **no** |
 | guard added before the sink | no, and deliberately so, since proving absence points at under-reporting |
@@ -71,8 +80,11 @@ Two consequences:
 1. A `VULNERABLE` verdict means *the construct in the spec is present*, never
    *this version is exploitable*. Reports must say so.
 2. The corpus decides which rule kind earns its adversarial fixtures next.
-   Right now the evidence points at a rule that can see argument defaults, not
-   at broader call matching.
+   The evidence pointed at argument defaults, so that rule was built. See
+   `GHSA-rprw-h62v-c2w7-defaults.yaml`, which asks the same advisory with a
+   `defaults` rule and locates the 5.1 boundary the `calls` spec could not.
+   The remaining unexpressible shapes are callee behaviour and module-level
+   registration, both from GHSA-6757.
 
 ## Process note: the corpus caught a bad spec, not a bad engine
 

@@ -87,7 +87,12 @@ func TestWrongShapeStillCompiles(t *testing.T) {
 // TestGrammarProbeIsHonest guards the guard: if the probe stopped containing
 // the constructs it claims to, the contract counts would be meaningless.
 func TestGrammarProbeIsHonest(t *testing.T) {
-	for _, want := range []string{"class C:", "def m(self)", "def f()", "helper(1)", "mod.helper(2)"} {
+	for _, want := range []string{
+		"class C:", "def m(self)", "def f(", "helper(1)", "mod.helper(2)",
+		// A defaulted parameter and an undefaulted one, so probeDefaults
+		// distinguishes them rather than counting every parameter.
+		"Loader=Loader", "mode: str = None", "stream,",
+	} {
 		if !strings.Contains(grammarProbe, want) {
 			t.Errorf("probe no longer contains %q; the expected counts are stale", want)
 		}

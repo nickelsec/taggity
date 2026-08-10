@@ -1,0 +1,32 @@
+# PyYAML arbitrary code execution via yaml.load with the default Loader.
+#
+# Advisory claims: introduced 0, fixed 5.1
+#
+# The same advisory as GHSA-rprw-h62v-c2w7.yaml, asked with a defaults rule
+# instead of a calls rule. load() constructs a Loader in every version, so a
+# calls rule reports the construct present throughout and cannot locate the
+# boundary. The vulnerability lived in the default argument:
+#
+#   3.13   load(stream, Loader=Loader)   unsafe default
+#   5.1    load(stream, Loader=None)     fix, with a warning path
+#   6.0.1  load(stream, Loader)          required argument, no default
+#
+# Keep both specs. The calls one documents what that rule kind cannot express;
+# this one shows the same question answered.
+package:
+  ecosystem: PyPI
+  name: pyyaml
+repo: https://github.com/yaml/pyyaml
+advisory: GHSA-rprw-h62v-c2w7
+
+authoring:
+  mode: manual
+  reviewed_by: nick
+
+signal:
+  code:
+    file: lib/yaml/__init__.py
+    symbol: load
+    rule:
+      defaults:
+        Loader: Loader
