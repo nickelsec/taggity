@@ -86,18 +86,36 @@ func TestNotVulnerableAssignedOnce(t *testing.T) {
 			}
 		}
 
+		// Case labels read a verdict; they never produce one. Excluding them
+		// keeps the budget focused on code that can actually conclude a version
+		// is unaffected.
+		inCaseLabel := map[ast.Node]bool{}
+		ast.Inspect(f, func(n ast.Node) bool {
+			cc, ok := n.(*ast.CaseClause)
+			if !ok {
+				return true
+			}
+			for _, expr := range cc.List {
+				ast.Inspect(expr, func(sub ast.Node) bool {
+					inCaseLabel[sub] = true
+					return true
+				})
+			}
+			return true
+		})
+
 		rel, _ := filepath.Rel(root, path)
 		ast.Inspect(f, func(n ast.Node) bool {
 			switch e := n.(type) {
 			case *ast.SelectorExpr:
 				id, ok := e.X.(*ast.Ident)
-				if ok && qualifiers[id.Name] && e.Sel.Name == "NotVulnerable" {
+				if ok && qualifiers[id.Name] && e.Sel.Name == "NotVulnerable" && !inCaseLabel[e] {
 					sites = append(sites, site{rel, fset.Position(e.Pos()).Line})
 				}
 				// Do not descend: X is a package qualifier, not a value.
 				return false
 			case *ast.Ident:
-				if selfPkg && e.Name == "NotVulnerable" {
+				if selfPkg && e.Name == "NotVulnerable" && !inCaseLabel[e] {
 					sites = append(sites, site{rel, fset.Position(e.Pos()).Line})
 				}
 			}
