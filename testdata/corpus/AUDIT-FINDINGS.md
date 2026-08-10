@@ -443,9 +443,10 @@ vocabulary was designed around the shape that turns out to be the exception.
 
 ## Next
 
-Eight multi-branch advisories audited across three sessions: two real findings,
-one of them an under-report, and three serious engine defects surfaced by
-running unfamiliar cases rather than by review.
+Nine advisories audited across four sessions: two real findings, one of them an
+under-report, and five engine defects. Three of those defects were surfaced by
+running unfamiliar cases; the other two by property tests over generated claim
+shapes, which is the cheaper way to find them.
 
 The open question is no longer whether findings exist. It is whether the
 disagreement-to-finding ratio is workable at scale: this run produced three
@@ -453,11 +454,16 @@ disagreements, of which one was real. A researcher auditing fifty advisories
 would read fifty reports to file perhaps ten corrections, which is worth it, but
 only if resolving each disagreement stays a matter of minutes.
 
-The corpus now holds six audited advisories with tests, three of them negative
-controls spanning three, four and four maintenance branches. Those are the cases
-that catch false positives, and one of them already has: the Vitrage run found a
-boundary-selection bug that was manufacturing twelve findings out of a correct
-advisory.
+The corpus now holds seven audited advisories with tests, four of them negative
+controls. Those are the cases that catch false positives, and one already has:
+the Vitrage run found a boundary-selection bug manufacturing twelve findings out
+of a correct advisory.
+
+Boundary selection is now covered by property tests rather than only by example.
+They generate claim shapes against tag topologies and assert invariants: every
+probe is a real tag, `unmentioned-line` never fires inside a claim, probe count
+tracks claims rather than tags, and selection is deterministic under shuffled
+input. They found two further bugs on their first run.
 
 ## Danger-shaped fixes are rare, and that is the result
 

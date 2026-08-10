@@ -70,6 +70,17 @@ compatibility promise and neither has earned one yet.
 
 ### Notes
 
+Boundary selection is covered by property tests over generated claim shapes and
+tag topologies, asserting invariants rather than outputs. They found two of the
+bugs listed above on their first run, without needing the advisory that would
+have exposed them.
+
+Guard-shaped fixes dominate. Filtering the PyPI advisory database for
+multi-range advisories whose fix deletes a dangerous call leaves seven
+candidates out of 1549 packages, all single-range. Of nine advisories audited,
+only two removed a call, so `indicates: fixed` is the primary path rather than
+the exception.
+
 Five more advisories audited, targeted by query rather than by hand. Two were
 consistent at every boundary (litestar, three branches; bugsink, four), and one
 produced the project's first under-report: PYSEC-2021-382 marks qutebrowser
