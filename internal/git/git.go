@@ -155,7 +155,15 @@ func (v Version) Compare(other Version) int {
 		return -1
 	}
 	if a.Pre != b.Pre {
-		return strings.Compare(a.Pre, b.Pre)
+		aKind, aNum := splitPre(a.Pre)
+		bKind, bNum := splitPre(b.Pre)
+		// PEP 440 orders the kinds a < b < rc, which is their alphabetical order
+		// once ParseVersion has normalised alpha, beta, c, pre and preview down
+		// to those three spellings.
+		if aKind != bKind {
+			return strings.Compare(aKind, bKind)
+		}
+		return sign(aNum - bNum)
 	}
 	if a.Post != b.Post {
 		return sign(a.Post - b.Post)
@@ -171,6 +179,39 @@ func (v Version) Compare(other Version) int {
 		return sign(a.Dev - b.Dev)
 	}
 	return 0
+}
+
+// plainerTag reports whether a is the better spelling of a version than b.
+//
+// Shortest wins, since every recognised prefix only adds characters, so "2.0.5"
+// beats "v2.0.5" beats "release-2.0.5". Equal lengths fall back to byte order
+// so the choice stays reproducible across runs.
+func plainerTag(a, b string) bool {
+	if len(a) != len(b) {
+		return len(a) < len(b)
+	}
+	return a < b
+}
+
+// splitPre separates a pre-release marker like "rc10" into its kind and number.
+//
+// The number has to compare numerically. As a string "rc10" sorts before "rc9",
+// which would place a release candidate ahead of the one it supersedes, and
+// advisory claims are frequently written against a pre-release: MLflow's names
+// 3.0.0rc0 as its introduced version.
+func splitPre(p string) (kind string, num int) {
+	i := strings.IndexFunc(p, func(r rune) bool { return r >= '0' && r <= '9' })
+	if i < 0 {
+		return p, 0
+	}
+	n, err := strconv.Atoi(p[i:])
+	if err != nil {
+		// Unreachable for anything ParseVersion produced, but Version is an
+		// exported struct a caller can build by hand, and Compare runs inside
+		// sort.Slice where a panic would abort an audit mid-run.
+		return p, 0
+	}
+	return p[:i], n
 }
 
 func at(s []int, i int) int {
@@ -261,9 +302,11 @@ func (r *Repo) Tags() (map[string]TagRef, []TagRef, error) {
 		t := TagRef{Name: name, Commit: commit.String(), Ver: v}
 		all = append(all, t)
 		// A repo may tag the same version twice (urllib3 has BOTH "v2.0.5" and
-		// "2.0.5", same commit). ForEach order is not guaranteed, so break ties
-		// deterministically by tag name so evidence stays reproducible.
-		if prev, dup := byKey[v.Key()]; !dup || name < prev.Name {
+		// "2.0.5", same commit). ForEach order is not guaranteed, so the winner
+		// is chosen by rule rather than by whichever arrived first: the name
+		// lands in evidence, and a reader checking it by hand is best served by
+		// the plainest spelling.
+		if prev, dup := byKey[v.Key()]; !dup || plainerTag(name, prev.Name) {
 			byKey[v.Key()] = t
 		}
 		return nil
@@ -276,7 +319,7 @@ func (r *Repo) Tags() (map[string]TagRef, []TagRef, error) {
 }
 
 var tagPrefixes = []string{
-	"release-", "release_", "release/", "rel_", "rel-", "rel/", "v.", "v",
+	"release-", "release_", "release/", "rel_", "rel-", "rel/", "v.",
 }
 
 // stripTagPrefix turns a repo's own tag spelling into something PEP 440 can
@@ -284,11 +327,20 @@ var tagPrefixes = []string{
 func stripTagPrefix(tag string) string {
 	s := strings.TrimSpace(tag)
 	low := strings.ToLower(s)
+	stripped := false
 	for _, p := range tagPrefixes {
 		if strings.HasPrefix(low, p) {
 			s = s[len(p):]
+			stripped = true
 			break
 		}
+	}
+	// A bare "v" only prefixes a version when a digit follows it. Stripping it
+	// unconditionally turned "version-1.2.3" into "ersion-1.2.3", which then
+	// failed to parse and was discarded, so a tag that was really there
+	// resolved as no_tag.
+	if !stripped && len(s) > 1 && (s[0] == 'v' || s[0] == 'V') && s[1] >= '0' && s[1] <= '9' {
+		s = s[1:]
 	}
 	// Underscore-separated numerics (sqlalchemy) become dotted.
 	if strings.Count(s, "_") > 0 && !strings.Contains(s, ".") {
@@ -305,7 +357,8 @@ func (r *Repo) Resolve(version string) (commit, tag string, reason taggity.Reaso
 	}
 	byKey, _, err := r.Tags()
 	if err != nil {
-		return "", "", taggity.ReasonNoTag
+		// The iterator failed rather than the version being absent.
+		return "", "", taggity.ReasonCommitUnreadable
 	}
 	t, ok := byKey[v.Key()]
 	if !ok {
@@ -319,7 +372,9 @@ func (r *Repo) FileAt(commitHash, path string) ([]byte, taggity.Reason) {
 	h := plumbing.NewHash(commitHash)
 	c, err := r.repo.CommitObject(h)
 	if err != nil {
-		return nil, taggity.ReasonNoTag
+		// The tag resolved to this hash, so reporting no_tag here would send a
+		// reader looking for a tag that is present.
+		return nil, taggity.ReasonCommitUnreadable
 	}
 	f, err := c.File(path)
 	if err != nil {
@@ -327,7 +382,9 @@ func (r *Repo) FileAt(commitHash, path string) ([]byte, taggity.Reason) {
 	}
 	s, err := f.Contents()
 	if err != nil {
-		return nil, taggity.ReasonFileAbsent
+		// The tree entry exists, so the file is not absent. A blob that cannot
+		// be read belongs with the other object store faults.
+		return nil, taggity.ReasonCommitUnreadable
 	}
 	return []byte(s), taggity.ReasonNone
 }
