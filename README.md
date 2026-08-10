@@ -105,6 +105,12 @@ deliberately removed one release after the fix and replaced with a different
 mechanism. `taggity export` records unreviewed disagreements separately from
 established versions for exactly this reason — it will not publish one as fact.
 
+The second advisory audited did hold up. GHSA-wxj7-3fx5-pp9m claims MLflow
+`>= 3.0.0rc0, < 3.1.0` is affected by an SSRF and lists `3.0.0` and `3.0.1`
+among the affected versions, but the fix commit is reachable from `v3.0.0` —
+only the release candidates predate it. The range should end at the last rc.
+See [testdata/corpus/AUDIT-FINDINGS.md](testdata/corpus/AUDIT-FINDINGS.md).
+
 ## Reproducibility, not confidence
 
 There is no reliable ground truth here. NVD and GHSA are themselves frequently
@@ -143,6 +149,11 @@ Stated plainly, because a tool that overclaims here is worse than no tool.
   `eval`, `exec`, `pickle.loads`, `os.system`, and similar sinks, but not
   vulnerabilities that are not call-shaped. PyYAML's `yaml.load` fix changed a
   default argument rather than a call, and `calls` cannot express that.
+- **Guard-shaped fixes need inverted polarity.** Both multi-branch advisories
+  audited so far were fixed by *adding* a check rather than removing a dangerous
+  call, so their specs set `indicates: fixed` and their verdicts read backwards.
+  That works, but it is the fragile direction: a guard disappearing may mean it
+  was reimplemented, not removed.
 - **A git repository is required.** Missing or unreachable means a hard error,
   never a verdict.
 - **The tag is assumed to be what was published.** Uploads from a dirty tree and

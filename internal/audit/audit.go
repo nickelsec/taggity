@@ -2,6 +2,7 @@ package audit
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/nickelsec/taggity/internal/check"
 	"github.com/nickelsec/taggity/internal/spec"
@@ -91,6 +92,22 @@ func (r *Report) Unknowns() []Finding {
 	return r.group(func(res Result) bool { return res.Outcome == Indeterminate })
 }
 
+// Overclaims returns narrower-than-claimed results, grouped the same way.
+//
+// These are not findings and are never exported: see Narrower for why this
+// direction is more often a blind spot in the spec than an error in the
+// advisory. They are returned separately so a report can show them, because a
+// summary count alone is not visible enough.
+//
+// The MLflow audit is the case that forced this. Its only real observation —
+// that 3.0.0 and 3.0.1 already carry the fix the advisory says they lack —
+// landed here, and the report printed "0 finding(s)". Under inverted polarity
+// this direction is positive evidence that the guard was found, not the absence
+// of evidence the Narrower reasoning assumes, so hiding it loses the answer.
+func (r *Report) Overclaims() []Finding {
+	return r.group(func(res Result) bool { return res.Outcome == Narrower })
+}
+
 // group collapses runs of adjacent matching results that share a verdict and
 // reason. Adjacency is by probe order, which SelectBoundaries already sorts
 // ascending by version.
@@ -127,21 +144,12 @@ func (r *Report) group(match func(Result) bool) []Finding {
 		}
 		cur.To = res.Boundary.Version
 		cur.Versions = append(cur.Versions, res.Boundary.Version)
-		if !contains(cur.Rules, res.Boundary.Rule) {
+		if !slices.Contains(cur.Rules, res.Boundary.Rule) {
 			cur.Rules = append(cur.Rules, res.Boundary.Rule)
 		}
 	}
 	flush()
 	return out
-}
-
-func contains(haystack []string, needle string) bool {
-	for _, s := range haystack {
-		if s == needle {
-			return true
-		}
-	}
-	return false
 }
 
 // Counts summarises the run. Findings and unknowns are counted as grouped
@@ -154,6 +162,9 @@ func (r *Report) Counts() (findings, consistent, narrower, unknown int) {
 			consistent++
 		case Narrower:
 			narrower++
+		default:
+			// Disagreement and Indeterminate are counted as grouped
+			// observations below, not per version.
 		}
 	}
 	return len(r.Findings()), consistent, narrower, len(r.Unknowns())

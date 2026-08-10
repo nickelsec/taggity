@@ -1,0 +1,39 @@
+# MLflow SSRF (CWE-918). gateway_proxy_handler forwarded the caller-supplied
+# gateway_path straight into an outbound request, so any path the attacker chose
+# was appended to the deployments target URI. The fix extracted a validator and
+# calls it before the request is built.
+#
+# Advisory claims TWO ranges, fixed independently:
+#   >= 3.0.0rc0, < 3.1.0
+#   < 2.22.2
+#
+# The 2.22.2 release exists only to carry the backport of the mainline fix
+# (mlflow/mlflow#15970), which is what makes this a second multi-branch case
+# rather than a repeat of the redis one.
+#
+# INVERTED POLARITY, like the redis spec. The fix ADDED a call, so the question
+# is "is the guard present":
+#
+#   NOT_VULNERABLE (validator absent)  -> the fix is missing
+#   VULNERABLE     (validator present) -> the fix is applied
+#
+# Two guard-shaped advisories out of two multi-branch cases is worth recording:
+# the `calls` rule was designed around dangerous constructs being removed, and
+# real backported fixes keep turning out to add a check instead.
+package:
+  ecosystem: PyPI
+  name: mlflow
+repo: https://github.com/mlflow/mlflow
+advisory: GHSA-wxj7-3fx5-pp9m
+
+authoring:
+  mode: manual
+  reviewed_by: nick
+
+signal:
+  code:
+    file: mlflow/server/handlers.py
+    symbol: gateway_proxy_handler
+    rule:
+      calls: _validate_gateway_path
+      indicates: fixed

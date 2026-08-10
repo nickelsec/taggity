@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -41,7 +42,7 @@ Flags:
 	}
 	if *specPath == "" || *advPath == "" {
 		fs.Usage()
-		return fmt.Errorf("--spec and --advisory are both required")
+		return errors.New("--spec and --advisory are both required")
 	}
 
 	sp, err := spec.Load(*specPath)
@@ -107,6 +108,18 @@ func printAudit(w io.Writer, rep *audit.Report, sp *spec.Spec, tagCount int, ver
 		}
 	}
 
+	// Shown, but kept out of DISAGREEMENTS and out of export: this direction
+	// says the advisory claims more than the engine can see, which is usually
+	// the spec's blind spot rather than the advisory's error. It still has to be
+	// visible — with an inverted-polarity rule this is where a genuine
+	// over-claim lands, and a bare count in the summary reads as nothing found.
+	if over := rep.Overclaims(); len(over) > 0 {
+		fmt.Fprintf(w, "\n  CLAIMED BUT NOT OBSERVED (needs review, not a finding)\n")
+		for _, o := range over {
+			fmt.Fprintf(w, "    %-16s %-15s %v\n", o.Span(), o.Verdict, o.Rules)
+		}
+	}
+
 	if gaps := rep.Unknowns(); len(gaps) > 0 {
 		fmt.Fprintf(w, "\n  GAPS (could not answer)\n")
 		for _, g := range gaps {
@@ -120,8 +133,8 @@ func printAudit(w io.Writer, rep *audit.Report, sp *spec.Spec, tagCount int, ver
 		"%d narrower · %d gap(s) across %d versions\n",
 		n, rawDis, consistent, narrower, unknown, rawUnk)
 
-	if len(findings) > 0 {
-		fmt.Fprintf(w, "\n  Each disagreement is a version worth reading, not a\n"+
+	if len(findings) > 0 || len(rep.Overclaims()) > 0 {
+		fmt.Fprintf(w, "\n  Each line above is a version worth reading, not a\n"+
 			"  correction to file. Confirm against the project's history first.\n")
 	}
 	fmt.Fprintln(w)
