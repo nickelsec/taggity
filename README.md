@@ -109,7 +109,15 @@ The second advisory audited did hold up. GHSA-wxj7-3fx5-pp9m claims MLflow
 `>= 3.0.0rc0, < 3.1.0` is affected by an SSRF and lists `3.0.0` and `3.0.1`
 among the affected versions, but the fix commit is reachable from `v3.0.0` —
 only the release candidates predate it. The range should end at the last rc.
-See [testdata/corpus/AUDIT-FINDINGS.md](testdata/corpus/AUDIT-FINDINGS.md).
+
+Staying quiet matters as much as finding that. PYSEC-2026-564 patches an `eval`
+injection in OpenStack Vitrage across four maintenance branches and is correct at
+every boundary; taggity locates all four backported fixes and reports nothing.
+That case is in the corpus precisely because a tool only ever exercised on wrong
+advisories has never shown it stays silent on right ones — and it immediately
+caught a boundary-selection bug that had been manufacturing false findings.
+
+Full write-ups: [testdata/corpus/AUDIT-FINDINGS.md](testdata/corpus/AUDIT-FINDINGS.md).
 
 ## Reproducibility, not confidence
 
