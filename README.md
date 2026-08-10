@@ -3,6 +3,14 @@
 [![CI](https://github.com/nickelsec/taggity/actions/workflows/ci.yml/badge.svg)](https://github.com/nickelsec/taggity/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
+```
+  ◇──◇──◆──◆──◇
+     [ TAGGITY ]
+       └─ hunt the tags
+
+  testing where it breaks.
+```
+
 Audits published vulnerability advisories and finds where their affected
 version ranges are wrong.
 
@@ -51,6 +59,51 @@ signal:
 Running that against an advisory's boundary versions surfaces disagreements: a
 range claiming `>= 2.0.0` while the vulnerable code is still present in 1.9.x
 because the fix was never backported.
+
+## Usage
+
+```sh
+# Check one version.
+taggity check redis@4.5.4 --spec spec.yaml
+
+# Audit an advisory's boundaries. A range is an assertion about its edges, so
+# only those are probed — 11 checks against redis-py's 157 tags.
+taggity audit --spec spec.yaml --advisory GHSA-8fww-64cx-x8p5.json
+
+# Scaffold a spec.
+taggity init --repo https://github.com/redis/redis-py --package redis \
+  --file redis/asyncio/client.py --symbol Redis.execute_command --calls eval
+
+# Emit OSV for what the audit established.
+taggity export --spec spec.yaml --advisory GHSA-8fww-64cx-x8p5.json
+```
+
+A real audit reads like this:
+
+```
+GHSA-8fww-64cx-x8p5  redis
+  claims  >= 4.5.0, < 4.5.4
+  claims  >= 4.2.0, < 4.4.4
+  probed  11 of 157 tags
+
+  DISAGREEMENTS
+    5.3.1–8.1.0      NOT_VULNERABLE  [unmentioned-line]
+
+  GAPS (could not answer)
+    2.10.6–4.1.4     [file_absent]
+
+  1 finding(s) across 4 versions · 4 consistent · 0 narrower · 1 gap(s)
+```
+
+Findings are grouped by structural change rather than counted per version. One
+edit shows up at every release after it, so counting versions would inflate a
+report by however many happened to be probed.
+
+**A disagreement is a reading assignment, not a conclusion.** The example above
+was investigated by hand and turned out to be correct behaviour: the guard was
+deliberately removed one release after the fix and replaced with a different
+mechanism. `taggity export` records unreviewed disagreements separately from
+established versions for exactly this reason — it will not publish one as fact.
 
 ## Reproducibility, not confidence
 
