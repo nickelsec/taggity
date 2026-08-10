@@ -29,7 +29,7 @@ Both corpus advisories are real, both were fixed, and in both cases the
 `calls` rule reports the construct as present at every version including the
 fixed ones.
 
-### GHSA-rprw-h62v-c2w7 — `yaml.load` arbitrary code execution
+### GHSA-rprw-h62v-c2w7: `yaml.load` arbitrary code execution
 
 Claimed range `>= 0, < 5.1`. The 5.1 fix changed the signature from
 `load(stream, Loader=Loader)` to `load(stream, Loader=None)` plus a warning
@@ -39,7 +39,7 @@ path that defaults to `FullLoader`.
 The vulnerability lived in a **default argument value**, and a call rule cannot
 express that.
 
-### GHSA-6757-jp84-gxfx — `python/object/apply` code execution
+### GHSA-6757-jp84-gxfx: `python/object/apply` code execution
 
 Claimed range `>= 5.1b7, < 5.3.1`. Verified by reading
 `lib/yaml/constructor.py` at each tag:
@@ -64,7 +64,7 @@ Vulnerability shapes seen so far and whether `calls` reaches them:
 | default argument changed (`Loader=Loader` to `Loader=None`) | **no** |
 | behaviour of the callee changed | **no** |
 | module-level registration moved | **no** |
-| guard added before the sink | no — and deliberately so, since proving absence points at under-reporting |
+| guard added before the sink | no, and deliberately so, since proving absence points at under-reporting |
 
 Two consequences:
 
@@ -81,8 +81,8 @@ call site is `self.make_python_instance(...)`, an attribute expression, while
 the spec asked for the bare name `make_python_instance`. The engine was right
 and the spec was wrong.
 
-That is the correct division of labour — the spec carries the claim and the
-engine reports what is there — but it means **a spec is only as good as the
+That is the correct division of labour, the spec carries the claim and the
+engine reports what is there, but it means **a spec is only as good as the
 question it encodes**, and a wrong spec produces a confident wrong answer. This
 is the strongest argument for reviewing model-drafted specs rather than
 trusting them.
@@ -93,5 +93,5 @@ trusting them.
   `redis-py` GHSA-8fww-64cx-x8p5 (`>= 4.5.0, < 4.5.4` and `>= 4.2.0, < 4.4.4`)
   is the obvious next case.
 - Boundary selection, which is what turns per-version checks into an audit.
-- Any advisory whose fix genuinely removes a call — needed to prove the engine
+- Any advisory whose fix genuinely removes a call, needed to prove the engine
   can produce a `NOT_VULNERABLE` on real code rather than only on fixtures.

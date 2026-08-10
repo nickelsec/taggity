@@ -37,8 +37,8 @@ func TestConsecutiveDisagreementsAreOneFinding(t *testing.T) {
 		t.Fatalf("got %d findings, want 1: four releases reflecting one change "+
 			"must not be counted four times", len(got))
 	}
-	if got[0].Span() != "5.3.1–8.1.0" {
-		t.Errorf("span = %q, want 5.3.1–8.1.0", got[0].Span())
+	if got[0].Span() != "5.3.1-8.1.0" {
+		t.Errorf("span = %q, want 5.3.1-8.1.0", got[0].Span())
 	}
 	if len(got[0].Versions) != 4 {
 		t.Errorf("finding covers %d versions, want 4", len(got[0].Versions))
@@ -106,8 +106,8 @@ func TestConsecutiveUnknownsGroupByReason(t *testing.T) {
 	if got[0].Reason != taggity.ReasonFileAbsent {
 		t.Errorf("reason = %q, want file_absent", got[0].Reason)
 	}
-	if got[0].Span() != "2.10.6–4.1.4" {
-		t.Errorf("span = %q, want 2.10.6–4.1.4", got[0].Span())
+	if got[0].Span() != "2.10.6-4.1.4" {
+		t.Errorf("span = %q, want 2.10.6-4.1.4", got[0].Span())
 	}
 	// Both selection rules that contributed are recorded, so the report can
 	// explain why each version was probed.

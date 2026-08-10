@@ -88,8 +88,8 @@ type Rule struct {
 	// Indicates declares what a match means. Default "vulnerable": the
 	// construct is the danger, as with calls: eval.
 	//
-	// Some fixes add a call rather than removing one — redis-py wrapped its
-	// command path in asyncio.shield — and the only honest way to express that
+	// Some fixes add a call rather than removing one, redis-py wrapped its
+	// command path in asyncio.shield, and the only honest way to express that
 	// with a presence rule is to match the guard and say so. Without this
 	// field a report would label a correctly fixed version as a disagreement,
 	// because the engine cannot infer polarity from the target's name.
@@ -173,7 +173,7 @@ func (s *Spec) Validate() error {
 		errs = append(errs, errors.New(
 			"signal.code.aliases is not evaluated in v0.1.0: the field is reserved "+
 				"for model-assisted authoring. Remove it, or qualify "+
-				"signal.code.symbol as Class.method instead — a spec whose aliases "+
+				"signal.code.symbol as Class.method instead. A spec whose aliases "+
 				"are ignored would report UNKNOWN [symbol_not_found] rather than matching"))
 	}
 	switch s.Signal.Code.Rule.Indicates {
@@ -189,8 +189,8 @@ func (s *Spec) Validate() error {
 // RuleString renders the rule for evidence records.
 //
 // Polarity is part of the rule, not a footnote. The same target means opposite
-// things under the two polarities — "calls asyncio.shield" is the danger in one
-// spec and the fix in another — and this string is the only statement of what
+// things under the two polarities, "calls asyncio.shield" is the danger in one
+// spec and the fix in another. This string is the only statement of what
 // was asked that reaches an evidence record or an exported OSV document. A
 // reader who cannot tell which question was asked cannot reproduce the answer.
 func (s *Spec) RuleString() string {

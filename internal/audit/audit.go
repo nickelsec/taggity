@@ -26,7 +26,7 @@ const (
 	//
 	// This is recorded but deliberately not treated as a finding. A calls rule
 	// over-reports by design and, as the corpus showed, misses many real fixes
-	// entirely — so this direction is far more likely to be a blind spot in the
+	// entirely, so this direction is far more likely to be a blind spot in the
 	// spec than an error in the advisory. Reporting it as a finding is how a
 	// false correction gets filed against a maintainer.
 	Narrower Outcome = "narrower-than-claimed"
@@ -54,11 +54,8 @@ type Report struct {
 // version that shares it.
 //
 // Versions are grouped rather than listed individually because a single edit to
-// a file shows up at every release after it. The redis-py audit probed four
-// releases from 5.3.1 to 8.1.0 and reported four disagreements, when one commit
-// in 4.5.5 explained all of them. Counting versions instead of changes inflates
-// a report by whatever number of releases happened to be probed, which is the
-// kind of arithmetic that makes a tool untrustworthy.
+// a file shows up at every release after it. Counting versions instead of
+// changes inflates a report by however many releases happened to be probed.
 type Finding struct {
 	// From and To bound the affected versions, inclusive. They are equal when
 	// a single version is involved.
@@ -78,7 +75,7 @@ func (f Finding) Span() string {
 	if f.From == f.To {
 		return f.From
 	}
-	return f.From + "–" + f.To
+	return f.From + "-" + f.To
 }
 
 // Findings returns disagreements, grouped into structural observations.
@@ -96,14 +93,12 @@ func (r *Report) Unknowns() []Finding {
 //
 // These are not findings and are never exported: see Narrower for why this
 // direction is more often a blind spot in the spec than an error in the
-// advisory. They are returned separately so a report can show them, because a
-// summary count alone is not visible enough.
+// advisory. They are returned separately so a report can render them, since a
+// count in the summary line is easy to miss.
 //
-// The MLflow audit is the case that forced this. Its only real observation —
-// that 3.0.0 and 3.0.1 already carry the fix the advisory says they lack —
-// landed here, and the report printed "0 finding(s)". Under inverted polarity
-// this direction is positive evidence that the guard was found, not the absence
-// of evidence the Narrower reasoning assumes, so hiding it loses the answer.
+// Under an inverted-polarity rule this direction carries real weight. A match
+// there means the guard was found present in a version the advisory calls
+// affected, which is evidence rather than the absence of it.
 func (r *Report) Overclaims() []Finding {
 	return r.group(func(res Result) bool { return res.Outcome == Narrower })
 }

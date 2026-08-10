@@ -68,7 +68,7 @@ func TestResolveVersion(t *testing.T) {
 	}
 
 	// Without injection it falls back to build info, which reads "(devel)" for
-	// a `go test` binary — so this asserts the floor, not a specific version.
+	// a `go test` binary, so this asserts the floor, not a specific version.
 	version = ""
 	if got := resolveVersion(); got == "" {
 		t.Error("resolveVersion() returned empty; it must always name something")

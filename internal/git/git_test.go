@@ -4,7 +4,7 @@ import "testing"
 
 func TestNormalizeRepoURL(t *testing.T) {
 	cases := []struct{ in, want string }{
-		// Real declared PyPI URLs — none of these are clone targets as-is.
+		// Real declared PyPI URLs, none of these are clone targets as-is.
 		{"https://github.com/psf/requests", "https://github.com/psf/requests"},
 		{"https://github.com/pallets/flask/", "https://github.com/pallets/flask"},
 		{"https://github.com/yaml/pyyaml/issues", "https://github.com/yaml/pyyaml"},

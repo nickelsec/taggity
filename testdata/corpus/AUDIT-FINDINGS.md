@@ -3,7 +3,7 @@
 First end-to-end audit: boundary selection driving the engine against a real
 advisory. Run with `go test -tags corpus ./internal/audit/ -v`.
 
-## GHSA-8fww-64cx-x8p5 — redis-py, multi-branch backport
+## GHSA-8fww-64cx-x8p5: redis-py, multi-branch backport
 
 The case the design targets: one advisory, two release lines, each with its own
 backported fix.
@@ -40,7 +40,7 @@ structural observation, not one per version. See below.
 
 **The engine independently located both backported fixes.** Without being told
 where they were, `asyncio.shield` was found in `Redis.execute_command` at
-exactly 4.4.4 and 4.5.4 — the two versions the advisory names as fixed — and in
+exactly 4.4.4 and 4.5.4, the two versions the advisory names as fixed, and in
 neither 4.4.3 nor 4.5.3. That is the multi-branch backport case resolving
 correctly on real code.
 
@@ -52,7 +52,7 @@ before 4.2.x, so the three oldest probes returned `UNKNOWN [file_absent]` and
 the audit continued rather than aborting. Those three are honest gaps, not
 failures.
 
-### The finding, and what it turned out to mean — RESOLVED
+### The finding, and what it turned out to mean: RESOLVED
 
 The audit flagged `asyncio.shield` as absent from every 5.x release. Following
 that up by hand produced a more precise answer than the audit could.
@@ -68,8 +68,8 @@ v4.5.5   4 -> 0    removed, one release later
 ```
 
 The guard did not survive into 5.x because **it was removed in 4.5.5**, the very
-next release after the fix. Across the whole async surface — `client.py`,
-`connection.py`, `cluster.py`, `retry.py` — 4.5.4 has seven occurrences and
+next release after the fix. Across the whole async surface (`client.py`,
+`connection.py`, `cluster.py`, `retry.py`) 4.5.4 has seven occurrences and
 5.0.0 has none. It did not move; it was taken out.
 
 **Why:** the shield caused its own problems. Issue #2722 reports
@@ -102,14 +102,14 @@ danger-shaped rule is available.
 
 ## Two problems this run exposed
 
-### 1. Inverted-polarity specs broke the classifier — fixed
+### 1. Inverted-polarity specs broke the classifier: fixed
 
 The `calls` vocabulary can only ask "is this construct present". The redis fix
 *added* a call, so the spec asks whether the **fix** is present, and verdicts
 must be read backwards.
 
-The classifier did not know that, so it first labelled 4.4.4 and 4.5.4 —
-correctly-fixed versions — as disagreements. The verdicts were right and the
+The classifier did not know that, so it first labelled 4.4.4 and 4.5.4, both
+correctly-fixed versions, as disagreements. The verdicts were right and the
 outcomes were wrong.
 
 Fixed by adding polarity to the rule:
@@ -125,7 +125,7 @@ disagreements are the 5.x-onward absences described above.
 
 ### 2. Unmentioned-line probes need release-line awareness
 
-The 5.x through 8.x probes fire the `unmentioned-line` rule, which is correct —
+The 5.x through 8.x probes fire the `unmentioned-line` rule, which is correct:
 the advisory says nothing about them. But an advisory about 4.x should probably
 not treat 8.x as a suspicious silence; those lines postdate the fix entirely.
 
@@ -140,12 +140,12 @@ boundaries, located both backported fixes unaided, and classified every in-range
 version consistently with the advisory.
 
 It also produced four disagreements that a human resolved to *not a finding*.
-That is a useful result rather than a disappointing one — the first real audit
+That is a useful result rather than a disappointing one. The first real audit
 established a working pipeline and calibrated what its output means.
 
 Three things the run settled:
 
-**The four disagreements were one observation** — now reported that way. A
+**The four disagreements were one observation**, now reported that way. A
 single commit in 4.5.5 explained every one of them, so counting per version
 inflated the report fourfold. Reports group consecutive versions sharing a
 verdict and reason, and stop grouping at any gap, since a construct that
@@ -161,7 +161,7 @@ disagreements as weaker evidence.
 **Zero under-reports held.** Nothing affected was reported safe, on either the
 in-range versions or the follow-up investigation.
 
-## GHSA-wxj7-3fx5-pp9m — MLflow, and the first real finding
+## GHSA-wxj7-3fx5-pp9m: MLflow, and the first real finding
 
 The second multi-branch case. MLflow's `gateway_proxy_handler` forwarded a
 caller-supplied `gateway_path` into an outbound request (SSRF, CWE-918). The fix
@@ -197,14 +197,14 @@ enumerates `3.0.0` and `3.0.1` as affected. Both already contain the fix.
 Verified three independent ways:
 
 - **By tag content.** `_validate_gateway_path` is absent from every 3.0.0
-  release candidate (rc0–rc3) and present at 3.0.0, 3.0.1 and 3.1.0.
+  release candidate (rc0,rc3) and present at 3.0.0, 3.0.1 and 3.1.0.
 - **By history.** Commit `4a0f6c1345` ("Validate `gateway_path` in
   `gateway_proxy_handler`", #15970) landed 2025-06-02, and
   `git tag --contains` lists `v3.0.0`.
 - **By the engine**, which reached the same boundaries unaided.
 
 The range should end at the last release candidate. As published, two shipped
-releases are marked vulnerable when they are not — the over-report direction,
+releases are marked vulnerable when they are not, the over-report direction,
 so nobody is left unwarned, but the advisory is still wrong.
 
 This is the first observation in the corpus that survived investigation. The
@@ -216,16 +216,16 @@ redis one did not.
 The backport case resolved correctly a second time.
 
 **Boundary selection stayed cheap and was sufficient.** Five probes out of 174
-tags (2.9%), and the edge probe alone exposed the error — `below-fixed` selects
+tags (2.9%), and the edge probe alone exposed the error, `below-fixed` selects
 only the version immediately under `fixed`, which was 3.0.1. Probing the range
 interior would have cost more and found the same thing.
 
 **`symbol_not_found` behaved as designed** on the run this section originally
 recorded: `gateway_proxy_handler` did not exist in 0.9.1 or 1.30.0, so those
 probes returned honest gaps rather than false clears. Those two versions are no
-longer probed at all — see the note under the table.
+longer probed at all, see the note under the table.
 
-### The defect this run exposed — fixed
+### The defect this run exposed: fixed
 
 **The finding was invisible.** It classified as `narrower-than-claimed`, which
 `Findings()` deliberately excludes, and the report printed **`0 finding(s)`** for
@@ -235,18 +235,18 @@ in the summary line.
 The exclusion itself is right: `Narrower` normally means the engine could not see
 something the advisory claims, which is usually the spec's blind spot. But that
 reasoning assumes a **danger-shaped** rule. Under `indicates: fixed` the polarity
-inverts — `Narrower` means *the guard was found present*, which is positive
+inverts, `Narrower` means *the guard was found present*, which is positive
 evidence, not missing evidence.
 
 Fixed by adding `Report.Overclaims()` and rendering it as its own section,
 `CLAIMED BUT NOT OBSERVED (needs review, not a finding)`. It stays out of
 `Findings()` and out of `export`, so nothing unreviewed is ever published as a
-claim — but it is now on screen where a reader will see it.
+claim, but it is now on screen where a reader will see it.
 
 ### What this says about `unmentioned-line`
 
 As originally run the rule fired twice here (0.9.1, 1.30.0) and both times
-returned `symbol_not_found` — honest gaps, no noise. Combined with redis, where
+returned `symbol_not_found`, honest gaps, no noise. Combined with redis, where
 it produced four true-but-immaterial disagreements, the reading was that the
 rule is **not wrong, but its yield depends on how far the unmentioned lines are
 from the fix.**
@@ -268,13 +268,13 @@ the redis run establishing that it is the fragile one. A rule kind that can
 express "this argument is unvalidated" would fit these cases better than
 inverting polarity does.
 
-## PYSEC-2026-564 — OpenStack Vitrage, the negative control
+## PYSEC-2026-564: OpenStack Vitrage, the negative control
 
 Deliberately chosen to be **danger-shaped** and **correct**. Vitrage's
 `create_predicate` built a lambda as a string from a caller-supplied query dict
 and ran it through `eval()`; the fix replaces that with `_create_query_function`,
 composing real callables from an operator table. The dangerous call is *removed*,
-so this is the polarity the `calls` rule was designed for — no inversion.
+so this is the polarity the `calls` rule was designed for, no inversion.
 
 The advisory patches **four maintenance branches**:
 
@@ -308,22 +308,22 @@ advisories has never demonstrated that it stays quiet on right ones, and a false
 correction filed against a maintainer is the most expensive way this project can
 fail. Staying silent here is the result.
 
-### The defect this run exposed — fixed
+### The defect this run exposed: fixed
 
 It was not silent on the first run. It reported **twelve disagreements**, spanning
 0.7.0 through 11.0.0, every one of them false.
 
 `SelectBoundaries` tracked which release lines an advisory "mentions" by taking
 the major version of each literal `introduced` and `fixed` event. The first
-Vitrage claim is `introduced: 0, fixed: 12.0.1` — which covers *everything ever
-released before 12.0.1* — but only major 12 was marked. Lines 0 through 11 looked
+Vitrage claim is `introduced: 0, fixed: 12.0.1`, which covers *everything ever
+released before 12.0.1*, but only major 12 was marked. Lines 0 through 11 looked
 like silence, so the `unmentioned-line` rule probed the newest release of each,
 found `eval` (correctly), and called each one a disagreement with an advisory
 that explicitly warns about them.
 
 Fixed by treating an open-below claim as covering every earlier line. Probes fell
-from 20 to 8, the twelve false findings disappeared, and the redis 5.x–8.x
-finding — which depends on lines *above* the claims — is unaffected. Both
+from 20 to 8, the twelve false findings disappeared, and the redis 5.x,8.x
+finding, which depends on lines *above* the claims, is unaffected. Both
 directions are pinned by regression tests.
 
 This is the most serious defect found so far. The earlier two were reporting
@@ -336,9 +336,9 @@ Third outing, third distinct behaviour:
 
 | advisory | fired on | result |
 |---|---|---|
-| redis-py | 5.x–8.x, above the claims | true, immaterial (guard replaced in 4.5.5) |
+| redis-py | 5.x,8.x, above the claims | true, immaterial (guard replaced in 4.5.5) |
 | MLflow | 0.9.1, 1.30.0, below an open claim | two spurious probes; no longer fires |
-| Vitrage | 0.7.0–11.0.0, below an open claim | **twelve false positives** |
+| Vitrage | 0.7.0-11.0.0, below an open claim | **twelve false positives** |
 
 The Vitrage case was a bug rather than a property of the rule, and it is now
 fixed. But the pattern across all three is consistent: **the rule's value depends

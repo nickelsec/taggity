@@ -173,7 +173,7 @@ func itoa(n int) string {
 // four ranges, which covers everything ever released before 12.0.1. Marking
 // only major 12 as mentioned left lines 0 through 11 looking like silence, so
 // the unmentioned-line rule probed the newest release of each and reported
-// twelve disagreements — every one of them a version the advisory does warn
+// twelve disagreements, every one of them a version the advisory does warn
 // about. Twelve false findings on an advisory that was correct.
 func TestSelectBoundariesTreatsOpenBelowClaimAsCoveringEarlierLines(t *testing.T) {
 	available := tags(

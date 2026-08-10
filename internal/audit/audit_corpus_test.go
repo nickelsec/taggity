@@ -20,7 +20,7 @@ func corpusPath(name string) string {
 // TestAuditRedisMultiBranch is the case the whole design targets: an advisory
 // covering two release lines, each with its own backported fix.
 //
-// The spec has inverted polarity — it asks whether the FIX is present, because
+// The spec has inverted polarity: it asks whether the FIX is present, because
 // the fix added asyncio.shield rather than removing a dangerous call. So
 // VULNERABLE means "fix applied" here. See the spec file.
 func TestAuditRedisMultiBranch(t *testing.T) {
@@ -146,7 +146,7 @@ func TestAuditBoundariesAreCheap(t *testing.T) {
 // 2025-06-02 and `git tag --contains` lists v3.0.0. Only the rc line predates
 // it. The 3.x range should end at the last release candidate, not at 3.1.0.
 //
-// Like the redis spec this one has inverted polarity — it matches the FIX, so
+// Like the redis spec this one has inverted polarity: it matches the FIX, so
 // VULNERABLE means "guard present". That is also why the observation lands in
 // Overclaims rather than Findings, and why Overclaims has to be rendered: the
 // report said "0 finding(s)" for an advisory that is demonstrably wrong.

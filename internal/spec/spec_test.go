@@ -43,7 +43,7 @@ func TestParseMinimalSpec(t *testing.T) {
 // A typo in a field name must fail the parse.
 //
 // The alternative is a spec that loads cleanly and evaluates something other
-// than what was written — `call:` instead of `calls:` would leave the rule
+// than what was written, `call:` instead of `calls:` would leave the rule
 // empty, and an empty rule is not a question anyone asked.
 func TestParseRejectsUnknownFields(t *testing.T) {
 	cases := map[string]string{
@@ -152,7 +152,7 @@ func TestValidateAcceptsBothPolarities(t *testing.T) {
 }
 
 // Spec paths are repository paths, which are always forward-slashed. Accepting
-// a Windows-style path would produce file_absent on every probe — an audit that
+// a Windows-style path would produce file_absent on every probe, an audit that
 // reports nothing but gaps, on a machine where the spec was written.
 func TestValidateRejectsBackslashPaths(t *testing.T) {
 	src := strings.Replace(minimal, "file: src/parser.py", `file: src\parser.py`, 1)
@@ -240,7 +240,7 @@ func TestAliasSchemaStillParses(t *testing.T) {
 }
 
 // Nothing reads aliases in v0.1.0, so accepting one would discard a field the
-// author wrote specifically to prevent a symbol_not_found UNKNOWN — and then
+// author wrote specifically to prevent a symbol_not_found UNKNOWN, and then
 // report that UNKNOWN. Rejecting is the only option that does not silently
 // produce the outcome the alias existed to avoid.
 func TestValidateRejectsAliasesRatherThanIgnoringThem(t *testing.T) {

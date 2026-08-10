@@ -262,7 +262,7 @@ func (r *Repo) Tags() (map[string]TagRef, []TagRef, error) {
 		all = append(all, t)
 		// A repo may tag the same version twice (urllib3 has BOTH "v2.0.5" and
 		// "2.0.5", same commit). ForEach order is not guaranteed, so break ties
-		// deterministically by tag name — evidence must be reproducible.
+		// deterministically by tag name so evidence stays reproducible.
 		if prev, dup := byKey[v.Key()]; !dup || name < prev.Name {
 			byKey[v.Key()] = t
 		}
