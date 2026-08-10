@@ -71,8 +71,28 @@ func TestAuditRedisMultiBranch(t *testing.T) {
 	}
 
 	findings, consistent, narrower, unknown := rep.Counts()
-	t.Logf("\n  findings %d · consistent %d · narrower %d · unknown %d",
-		findings, consistent, narrower, unknown)
+	rawDis, _, _, rawUnk := rep.VersionCounts()
+	t.Logf("\n  findings %d (%d versions) · consistent %d · narrower %d · "+
+		"unknown %d (%d versions)",
+		findings, rawDis, consistent, narrower, unknown, rawUnk)
+
+	for _, f := range rep.Findings() {
+		t.Logf("  FINDING  %-14s %-14s %v", f.Span(), f.Verdict, f.Rules)
+	}
+	for _, u := range rep.Unknowns() {
+		t.Logf("  gap      %-14s [%s] %v", u.Span(), u.Reason, u.Rules)
+	}
+
+	// Four consecutive 5.x-and-later releases reflect one commit in 4.5.5.
+	// Counting them separately would inflate this report fourfold.
+	if findings > 1 {
+		t.Errorf("reported %d findings for what grouping should collapse; "+
+			"consecutive versions sharing a verdict are one observation", findings)
+	}
+	if rawDis <= findings {
+		t.Errorf("grouping did not reduce anything: %d versions, %d findings",
+			rawDis, findings)
+	}
 
 	// The engine must independently locate both fixed versions. This is the
 	// substantive claim: without being told where the fixes are, it finds
