@@ -1,0 +1,35 @@
+# Bugsink path traversal via event_id during ingestion.
+# get_filename_for_event_id used a caller-supplied event_id directly as a
+# filename, so a crafted value escaped the intended directory.
+#
+# The fix normalises the input through uuid.UUID(event_id).hex, which both
+# validates the format and strips dashes. It was released on four maintenance
+# branches: 1.4.3, 1.5.5, 1.6.4 and 1.7.4.
+#
+# A NEGATIVE CONTROL, and the widest one in the corpus at four branches.
+# Checked by hand: uuid.UUID is absent at 1.4.2, 1.5.4, 1.6.3 and 1.7.3 and
+# present at each fix. The advisory is right at all eight boundaries.
+#
+# This advisory also carries a DUPLICATED range: ">= 1.6.0, < 1.6.4" appears
+# twice in its events list. Boundary selection must collapse that rather than
+# probing the same versions twice, which is the second reason to keep the case.
+#
+# INVERTED POLARITY. The rule matches the guard, so VULNERABLE means the fix is
+# present.
+package:
+  ecosystem: PyPI
+  name: bugsink
+repo: https://github.com/bugsink/bugsink
+advisory: PYSEC-2026-1226
+
+authoring:
+  mode: manual
+  reviewed_by: nick
+
+signal:
+  code:
+    file: ingest/filestore.py
+    symbol: get_filename_for_event_id
+    rule:
+      calls: uuid.UUID
+      indicates: fixed
