@@ -28,6 +28,23 @@ compatibility promise and neither has earned one yet.
 
 ### Fixed
 
+- `check` summarised a multi-location spec using the first location rather than
+  the one that answered. A symbol that moves between files leaves most locations
+  absent at any given tag, so the rule line named a rule that never fired, the
+  verdict line paired `VULNERABLE` with another location's "not present"
+  message, and the provenance line named a file that is not in the tree that was
+  examined. That last one is the output a maintainer checks first. Verdicts were
+  correct throughout and none change; only what the output says about them does.
+  Single-location specs are unaffected.
+- `.gitignore` listed the built binary as `taggity`, an unanchored pattern that
+  git matches against any path component. Every new file under `cmd/taggity/`
+  and `internal/taggity/` was ignored, including new tests. Already-tracked
+  files kept working, which is why it went unnoticed. The patterns are now
+  anchored to the repository root.
+- `export` recorded one symbol and one file in its OSV provenance. Across a
+  version range the answering location changes as code moves, so no single pair
+  describes the report. The block now lists every location the spec named,
+  under `locations`.
 - Boundary selection probed versions the repository does not tag. A claim can
   name a version that was never released, or something that is not a version:
   PYSEC-2021-382 lists a commit hash where a fixed version belongs. Each one
@@ -66,7 +83,16 @@ compatibility promise and neither has earned one yet.
   fields would mean the engine answers one and ignores the other, giving the
   author a narrower question than they wrote.
 - Evidence records carry the polarity of the rule that produced them, and
-  `check` lists every location when a spec has more than one.
+  `check` lists every location when a spec has more than one. The location that
+  produced the verdict is marked with `*`.
+- The README leads with `check` and a single version, and introduces range
+  auditing after it. Asking whether one release contains the vulnerable code is
+  the question people arrive with, and auditing an advisory's range is that
+  question asked at the edges of a claim.
+- Documented that a rule asks whether a construct is present, which is not
+  always the same question as whether the bug is. Where a fix adds a guard
+  around an unchanged sink, a rule naming the sink keeps reporting `VULNERABLE`
+  after the fix lands.
 
 ### Notes
 

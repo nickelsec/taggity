@@ -132,13 +132,13 @@ func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals,
 		return
 	}
 
-	fmt.Fprintf(w, "\n%s@%s\n", sp.Package.Name, version)
-	fmt.Fprintf(w, "  rule    %s in %s\n", sp.RuleString(), sp.Primary().Symbol)
+	// Every summary line describes the location that produced the verdict, not
+	// the one the spec happens to list first. Under `any` those differ whenever
+	// a symbol moved between files, which is most tags of a long-lived project.
+	ev := sig.Deciding()
 
-	ev := taggity.Evidence{}
-	if len(sig.Evidence) > 0 {
-		ev = sig.Evidence[0]
-	}
+	fmt.Fprintf(w, "\n%s@%s\n", sp.Package.Name, version)
+	fmt.Fprintf(w, "  rule    %s in %s\n", ruleLine(sp, sig, ev), decidingSymbol(sp, ev))
 
 	// Unevaluated signals render as an em dash. A signal that never ran must
 	// never look like a pass.
@@ -147,11 +147,17 @@ func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals,
 	fmt.Fprintf(w, "  triggers   %-15s not evaluated\n", sig.Triggers)
 
 	// With several locations the summary line alone does not say which one
-	// decided the verdict, and under `any` that is the whole question.
+	// decided the verdict, and under `any` that is the whole question. The
+	// arrow marks the deciding row so the breakdown and the summary visibly
+	// agree rather than leaving the reader to infer it.
 	if len(sig.Evidence) > 1 {
 		fmt.Fprintln(w)
 		for _, e := range sig.Evidence {
-			fmt.Fprintf(w, "    %-15s %s  %s\n", e.Verdict, e.File, e.Detail)
+			mark := "  "
+			if e == ev {
+				mark = "* "
+			}
+			fmt.Fprintf(w, "  %s%-15s %s  %s\n", mark, e.Verdict, e.File, e.Detail)
 		}
 	}
 
@@ -169,6 +175,29 @@ func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals,
 			"\n        VULNERABLE here means the fix is present.")
 	}
 	fmt.Fprintln(w)
+}
+
+// ruleLine describes the rule that produced the verdict.
+//
+// A single-location spec has one rule and the spec renders it. With several,
+// the spec-level string can only say "any of N", which names a rule that may
+// not be the one that fired, so the deciding record's own rule is used and the
+// count is kept as a prefix to show the others were considered.
+func ruleLine(sp *spec.Spec, sig taggity.Signals, ev taggity.Evidence) string {
+	if len(sig.Evidence) < 2 || ev.Rule == "" {
+		return sp.RuleString()
+	}
+	return fmt.Sprintf("any of %d, matched: %s", len(sig.Evidence), ev.Rule)
+}
+
+// decidingSymbol names the symbol that was examined. Evidence carries no symbol
+// when the file could not be read at all, so the spec's own symbol stands in
+// rather than leaving the line blank.
+func decidingSymbol(sp *spec.Spec, ev taggity.Evidence) string {
+	if ev.Symbol != "" {
+		return ev.Symbol
+	}
+	return sp.Primary().Symbol
 }
 
 func short(commit string) string {

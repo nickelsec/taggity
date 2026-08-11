@@ -121,3 +121,48 @@ func TestExportRecordsMatcherVersion(t *testing.T) {
 		t.Error("output must not imply every version was examined")
 	}
 }
+
+// Provenance lists every location a spec named, not one of them.
+//
+// Across a version range the answering location changes as code moves between
+// files, so no single file and symbol describes the report. Naming one puts a
+// path into machine-readable output that need not exist in every tree probed,
+// and unlike terminal output nobody reads this before it is consumed.
+func TestExportRecordsEveryLocation(t *testing.T) {
+	sp := &spec.Spec{Repo: "https://github.com/x/y"}
+	sp.Package.Ecosystem = "PyPI"
+	sp.Package.Name = "foo"
+	for _, loc := range []struct{ file, symbol, calls string }{
+		{"new/place.py", "build_urls", "urls.append"},
+		{"old/place.py", "Client._discover", "httpx.Request"},
+	} {
+		c := spec.Code{File: loc.file, Symbol: loc.symbol}
+		c.Rule.Calls = loc.calls
+		sp.Signal.CodeAny = append(sp.Signal.CodeAny, c)
+	}
+
+	doc := buildOSV(&audit.Report{AdvisoryID: "GHSA-test"}, sp)
+	ts, ok := doc.Affected[0].DatabaseSpecific["taggity"].(map[string]any)
+	if !ok {
+		t.Fatal("provenance block missing")
+	}
+
+	locs, ok := ts["locations"].([]map[string]string)
+	if !ok {
+		t.Fatalf("locations = %T, want a list of every location probed", ts["locations"])
+	}
+	if len(locs) != 2 {
+		t.Fatalf("locations = %d, want 2: every location the spec named", len(locs))
+	}
+
+	seen := map[string]bool{}
+	for _, l := range locs {
+		seen[l["file"]] = true
+		if l["symbol"] == "" || l["rule"] == "" {
+			t.Errorf("location %q lost its symbol or rule: %v", l["file"], l)
+		}
+	}
+	if !seen["new/place.py"] || !seen["old/place.py"] {
+		t.Errorf("locations = %v, want both files", locs)
+	}
+}

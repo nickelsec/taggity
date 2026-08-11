@@ -49,6 +49,34 @@ func (s Signals) Overall() Verdict {
 	return Unknown
 }
 
+// Deciding returns the evidence record that produced the overall verdict.
+//
+// A spec may name several locations, and the one that answers is often not the
+// one listed first: a symbol moves between files across a version range, so at
+// any given tag most locations are absent and one matches. Reporting the first
+// record instead of the deciding one names a file that need not exist in the
+// tree that was examined, which is the one thing this output cannot get wrong.
+//
+// The selection mirrors combineAny: a match anywhere is decisive, so the first
+// Vulnerable record is the answer. Without a match every location agreed, and
+// the first record sharing the overall verdict represents them all.
+func (s Signals) Deciding() Evidence {
+	if len(s.Evidence) == 0 {
+		return Evidence{}
+	}
+	for _, e := range s.Evidence {
+		if e.Verdict == Vulnerable {
+			return e
+		}
+	}
+	for _, e := range s.Evidence {
+		if e.Verdict == s.Present {
+			return e
+		}
+	}
+	return s.Evidence[0]
+}
+
 // Evidence records why a verdict was reached, in enough detail that someone
 // with only the repository URL and this record can re-derive the same verdict
 // by hand. That is the standard: if a field would be needed to reproduce the

@@ -1,8 +1,10 @@
-# Build output
+# Build output. The binary patterns are anchored with a leading slash: bare
+# "taggity" matches a path component anywhere, which silently ignores every new
+# file under cmd/taggity/ and internal/taggity/.
 bin/
 dist/
-taggity
-taggity.exe
+/taggity
+/taggity.exe
 
 # Test and coverage output
 *.test

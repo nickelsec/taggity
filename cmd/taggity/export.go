@@ -150,12 +150,25 @@ func buildOSV(rep *audit.Report, sp *spec.Spec) osvDoc {
 	a := osvAffected{Versions: affected}
 	a.Package.Ecosystem = sp.Package.Ecosystem
 	a.Package.Name = sp.Package.Name
+	// Locations are listed in full rather than as one symbol and file. A spec
+	// may name several, and across a version range different ones answer as the
+	// code moves between files, so no single pair describes the report. Naming
+	// one would put a path in machine-readable output that need not exist in
+	// every tree that was probed.
+	locations := make([]map[string]string, 0, len(sp.Signal.Locations()))
+	for _, loc := range sp.Signal.Locations() {
+		locations = append(locations, map[string]string{
+			"file":   loc.File,
+			"symbol": loc.Symbol,
+			"rule":   loc.Rule.String(),
+		})
+	}
+
 	a.DatabaseSpecific = map[string]any{
 		"taggity": map[string]any{
 			"method":                "static-predicate-boundary-probe",
 			"rule":                  sp.RuleString(),
-			"symbol":                sp.Primary().Symbol,
-			"file":                  sp.Primary().File,
+			"locations":             locations,
 			"matcher":               predicate.MatcherName,
 			"matcher_version":       predicate.MatcherVersion,
 			"probed_versions":       len(rep.Results),

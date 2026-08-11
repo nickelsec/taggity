@@ -10,17 +10,32 @@
           vulnerable
 ```
 
-Checks whether a published advisory's affected version range matches the source.
+Answers one question about a released version: does it contain the vulnerable
+code?
 
-Advisories get version ranges wrong regularly. A fix gets backported to 2.x but
-not 1.x, and the advisory only mentions 2.x. Or the range is copied from a
-release note that was already wrong. In `github/advisory-database` there are 99
-merged pull requests mentioning backports, most of them corrections someone
-worked out by hand.
+```sh
+taggity check mcp@1.19.0 --spec ssrf.yaml
+```
 
-taggity answers one question, repeatably: does this exact version contain this
-exact construct? Point it at an advisory and it probes the versions where the
-claimed range would be wrong.
+```
+  present    VULNERABLE      Client._discover calls httpx.Request
+  → VULNERABLE
+  at v1.19.0 (6c26d087df34) src/mcp/client/auth.py
+```
+
+The verdict comes with the tag, the commit and the file it was read from, so
+anyone can check the answer by hand. Verdicts are `VULNERABLE`,
+`NOT_VULNERABLE` or `UNKNOWN`, and the third one is used often: when the symbol
+moved or the file was unreadable, taggity says so instead of reporting the
+version clean.
+
+Once you can ask that about one version, you can ask it about the edges of an
+advisory's range, which is where advisories tend to be wrong. A fix gets
+backported to 2.x but not 1.x and the advisory only mentions 2.x. Or the range
+is copied from a release note that was already wrong. In
+`github/advisory-database` there are 99 merged pull requests mentioning
+backports, most of them corrections someone worked out by hand. `taggity audit`
+probes the versions where the claimed range would be wrong.
 
 ## Install
 
@@ -65,34 +80,59 @@ That one is the PyYAML case. `load()` constructs a `Loader` in every released
 version, so asking about the call cannot find the boundary; asking about the
 default puts it at 5.1, where the advisory says it is.
 
-A fix can also span files, with the sink in one module and the guard added in
-another. Use `code_any` for that, and the version counts as affected if any
-location matches:
+Then run it against a version:
+
+```sh
+taggity check redis@4.5.3 --spec spec.yaml
+```
+
+### When the code moves
+
+Symbols get renamed and files get split, so a spec naming one path stops
+matching for reasons that have nothing to do with the vulnerability. Going back
+through the tags of `modelcontextprotocol/python-sdk`, the OAuth discovery code
+lives in three different files: `auth.py` up to 1.19.0, `auth/oauth2.py` for
+1.20.x and 1.21.x, then `auth/utils.py` from 1.22.0 on.
+
+`code_any` takes several locations and the version counts as affected if any of
+them matches:
 
 ```yaml
 signal:
   code_any:
-    - file: src/handler.py
-      symbol: proxy
-      rule: { calls: requests.request }
-    - file: src/validator.py
-      symbol: validate
-      rule: { calls: re.fullmatch }
+    - file: src/mcp/client/auth/utils.py
+      symbol: build_protected_resource_metadata_discovery_urls
+      rule: { calls: urls.append }
+    - file: src/mcp/client/auth/oauth2.py
+      symbol: OAuthClientProvider._discover_protected_resource
+      rule: { calls: httpx.Request }
+    - file: src/mcp/client/auth.py
+      symbol: OAuthClientProvider._discover_protected_resource
+      rule: { calls: httpx.Request }
 ```
 
-If one location cannot be read the result is `UNKNOWN`, not `NOT_VULNERABLE`.
-A location that was never examined is not a location found clean.
+Output names the location that answered, and marks it in the breakdown:
 
-Then run it against a version, or against a whole advisory:
+```
+  present    VULNERABLE      Client._discover calls httpx.Request
+
+     UNKNOWN         src/mcp/client/auth/utils.py   not present at v1.19.0
+     UNKNOWN         src/mcp/client/auth/oauth2.py  not present at v1.19.0
+   * VULNERABLE      src/mcp/client/auth.py         Client._discover calls httpx.Request
+```
+
+If no location matches and one of them could not be read, the result is
+`UNKNOWN`, not `NOT_VULNERABLE`. A location that was never examined is not a
+location found clean.
+
+## Auditing an advisory's range
+
+A range is a claim about its edges, so `audit` probes the edges:
 
 ```sh
-taggity check redis@4.5.3 --spec spec.yaml
-
 taggity audit --spec testdata/corpus/GHSA-8fww-64cx-x8p5.yaml \
   --advisory testdata/corpus/GHSA-8fww-64cx-x8p5.json
 ```
-
-An audit looks like this:
 
 ```
 GHSA-8fww-64cx-x8p5  redis
@@ -111,8 +151,7 @@ GHSA-8fww-64cx-x8p5  redis
   1 finding(s) across 4 versions · 4 consistent · 0 narrower · 1 gap(s) across 3 versions
 ```
 
-A range is a claim about its edges, so only the edges get probed. That is 11
-checks against redis-py's 157 tags instead of 157.
+That is 11 checks against redis-py's 157 tags instead of 157.
 
 A disagreement is something to go read, not a correction to file. The one above
 was investigated by hand and turned out to be fine: the guard was deliberately
@@ -158,6 +197,12 @@ looking entirely correct.
   and similar sinks. `defaults` covers a changed default argument, which is how
   PyYAML's `yaml.load` was fixed. Vulnerabilities of any other shape, such as
   changed callee behaviour, are `UNKNOWN`.
+- Rules ask whether a construct is present, which is not always the same
+  question as whether the bug is. A missing input check is a good example: the
+  sink is there before and after the fix, and only a guard around it changes.
+  A rule naming the sink will keep reporting `VULNERABLE` after the fix lands.
+  Write the rule against something the fix actually adds or removes, and if
+  nothing structural changes, the spec cannot express that vulnerability.
 - Needs a git repository. No repo, no answer.
 - Assumes the tag is what was published. Uploads from a dirty tree and
   untagged hotfixes are invisible.
