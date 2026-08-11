@@ -35,7 +35,11 @@ jobs:
       # The race detector needs cgo. GitHub runners ship a C toolchain on all
       # three platforms, so it is enabled here even though the shipped binary
       # is pure Go and cross-compiles without one.
+      # bash on every runner, including Windows. PowerShell splits
+      # `-coverprofile=coverage.out ./...` in a way that leaves Go trying to
+      # build a package called ".out", which fails while every real test passes.
       - name: Test
+        shell: bash
         run: go test -race -coverprofile=coverage.out ./...
         env:
           CGO_ENABLED: 1
@@ -48,15 +52,22 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-      - uses: golangci/golangci-lint-action@v6
+      # Pinned rather than tracking a tag. `latest` resolved to a golangci-lint
+      # built with an older Go than go.mod targets, which fails before it lints
+      # anything, and .golangci.yaml uses the v2 config schema that only
+      # golangci-lint v2 reads.
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: latest
+          version: v2.12.2
 
   gosec:
     name: gosec
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: securego/gosec@master
+      # Pinned. A mutable ref on a third-party action is the supply-chain shape
+      # this tool exists to audit, and `master` can break the build with no
+      # change on our side.
+      - uses: securego/gosec@9e75c0576c9878035d4221392108d458abe10fc3 # v2.28.0
         with:
           args: ./...
