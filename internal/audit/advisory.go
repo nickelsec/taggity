@@ -12,8 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-
-	"github.com/nickelsec/taggity/internal/git"
 )
 
 // Advisory is the subset of the OSV schema this package reads.
@@ -126,31 +124,6 @@ func (a *Advisory) Claims(pkg string) []Claim {
 		}
 	}
 	return out
-}
-
-// covers reports whether version falls inside the claim, half-open as the
-// advisory writes it: introduced is inclusive, fixed is exclusive.
-//
-// A version that does not parse is not covered. Guessing would place a probe
-// inside a claim it may have nothing to do with.
-func (c Claim) covers(version string) bool {
-	v, ok := git.ParseVersion(version)
-	if !ok {
-		return false
-	}
-	if c.Introduced != "" && c.Introduced != "0" {
-		lo, ok := git.ParseVersion(c.Introduced)
-		if !ok || v.Compare(lo) < 0 {
-			return false
-		}
-	}
-	if c.Fixed != "" {
-		hi, ok := git.ParseVersion(c.Fixed)
-		if !ok || v.Compare(hi) >= 0 {
-			return false
-		}
-	}
-	return true
 }
 
 // String renders the claims for a report header.

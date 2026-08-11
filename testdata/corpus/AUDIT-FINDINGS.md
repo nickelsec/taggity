@@ -441,6 +441,49 @@ dangerous call, so all five specs needed `indicates: fixed`. Across eight
 multi-branch advisories now audited, only Vitrage was danger-shaped. The `calls`
 vocabulary was designed around the shape that turns out to be the exception.
 
+## Finishing the sweep: eight audited, one finding
+
+Three more from the shortlist, plus one that could not be audited at all.
+
+| advisory | package | ranges | result |
+|---|---|---|---|
+| GHSA-r7q7-xcjw-qx8q | tqdm | 2 (overlapping) | consistent, after a false positive was fixed |
+| GHSA-hg4c-rgvm-964g | pycsw | 3 | consistent |
+| GHSA-76x8-gg39-5jjg | cherrypy | 2 | **unauditable** |
+
+**CherryPy is the new category.** The advisory claims `< 2.1.1` and
+`>= 3.0, < 3.0.2`, and the fix commit is from 2007. The repository's oldest tag
+is `cherrypy-3.1.0beta`, so neither claimed boundary exists in git at all. Not a
+gap the tool can report against a probe: there is nothing to probe. An advisory
+older than its own repository history is outside what any source-based auditor
+can answer.
+
+That makes **eight advisories audited from the mechanical sweep, one finding**,
+and one where the question could not be put.
+
+### The defect this run exposed: overlapping claims manufactured a disagreement
+
+tqdm's advisory carries two ranges that overlap and share a fixed version:
+
+```
+>= 4.4.1,  < 4.11.2
+>= 4.10.0, < 4.11.2
+```
+
+4.9.0 sits below the second claim's `introduced` while sitting **inside** the
+first. Boundary selection probed it as `below-introduced`, whose whole meaning
+is "the advisory says this version is safe" — and the advisory says the
+opposite. The construct is present at 4.9.0, so the run reported a disagreement
+against a correct advisory.
+
+This is the failure direction that matters most. A missed finding costs a
+finding; a false one costs a maintainer's time and this project's credibility
+the first time a correction is filed and turns out to be wrong.
+
+`below-introduced` now skips any version another claim already covers. The two
+real findings in the corpus, qutebrowser and trytond, are unaffected: both sit
+below every claim, not between two overlapping ones.
+
 ## The second under-report: trytond, and the first found without targeting
 
 GHSA-m9jj-5qvj-5fhx patches arbitrary command execution in Tryton's `ir.cron`.
@@ -518,15 +561,22 @@ clean.
 by hand first, so the silence is the tool agreeing with four correct advisories
 rather than the tool failing to look.
 
-With trytond that makes **one under-report in five mechanically selected
-advisories**, against one in five when the picking was deliberate. Five is a
-small sample and the two rates should not be compared as though they were
-measured, but the useful claim is narrower and now supported: wrong ranges are
-found without needing to guess which advisories to look at.
+With trytond and the three above, that makes **one under-report in eight
+mechanically selected advisories**, against one in five when the picking was
+deliberate. Eight is still a small sample and the two rates should not be
+compared as though they were measured. The useful claim is narrower and now
+supported: wrong ranges are found without needing to guess which advisories to
+look at.
 
 What the earlier sessions could not say, and this run can: the finding did not
 depend on judgement about which advisory looked suspect. The filter was
 mechanical and trytond came out of it.
+
+The eight also cost two engine defects, both in the direction of reporting
+something that was not there or missing something that was: decorated methods
+were invisible to a qualified lookup, and overlapping claims manufactured a
+disagreement. Neither would have surfaced from specs written against code the
+author had already read.
 
 ### What the rejections say
 

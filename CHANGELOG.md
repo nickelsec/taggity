@@ -10,6 +10,17 @@ compatibility promise and neither has earned one yet.
 
 ### Fixed
 
+- Overlapping claims manufactured a disagreement. An advisory may carry a wide
+  range and a narrower one sharing its fixed version, as tqdm's does with
+  `>= 4.4.1, < 4.11.2` and `>= 4.10.0, < 4.11.2`. The version below the second
+  claim's introduced edge sits inside the first, so the advisory calls it
+  affected, but it was probed as `below-introduced`, whose meaning is "the
+  advisory says this version is safe". Finding the construct there reported a
+  disagreement against a correct advisory.
+
+  This is the expensive direction to be wrong in: a false correction filed
+  against a maintainer costs more than a missed finding. `below-introduced` now
+  skips any version another claim already covers.
 - A decorated method was invisible to a `Class.method` lookup. tree-sitter wraps
   it in a `decorated_definition` node, and the method query matched only bare
   `function_definition` children of a class body, so every `@classmethod`,
@@ -29,6 +40,12 @@ first found without targeting. Its `trytond` claims start at 2.4.0 while
 `safe_eval(cron.args)` is present in 1.8.11, 2.0.9 and 2.2.14, all real PyPI
 releases. The same advisory says `introduced: 0` under the `tryton` package
 name, so the lower bound exists and was not carried across.
+
+Eight advisories audited from a mechanical sweep of the PyPI database, one
+finding. Both engine defects fixed in this release came out of that sweep rather
+than from specs written against code already read. A ninth, CherryPy
+GHSA-76x8-gg39-5jjg, could not be audited at all: its claimed boundaries predate
+the repository's oldest tag, which no source-based auditor can answer.
 
 ## [0.2.1] - 2026-08-11
 

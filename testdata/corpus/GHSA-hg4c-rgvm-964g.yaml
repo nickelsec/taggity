@@ -1,0 +1,44 @@
+# pycsw SQL injection (CWE-89). getrecords passed a caller-supplied CQL_TEXT
+# constraint through _cql_update_queryables_mappings straight into the WHERE
+# clause, so the query text reached the database as SQL.
+#
+# The fix routes CQL through cql2fes1, which transforms it into a fes1 filter
+# that fes.parse turns into bound parameters.
+#
+# Danger-shaped: the fix REMOVED the call from getrecords rather than adding a
+# guard, so the rule matches the vulnerable construct and polarity is natural.
+#
+# The rule asks about getrecords rather than the file, because
+# _cql_update_queryables_mappings is still DEFINED after the fix and called
+# elsewhere. Counting occurrences in the file would never reach zero.
+#
+# Advisory claims THREE ranges, fixed independently:
+#   < 1.8.6
+#   >= 1.10.0, < 1.10.5
+#   >= 2.0.0, < 2.0.2
+package:
+  ecosystem: PyPI
+  name: pycsw
+repo: https://github.com/geopython/pycsw
+advisory: GHSA-hg4c-rgvm-964g
+
+authoring:
+  mode: manual
+  reviewed_by: nick
+
+# The 2.x line moved the CSW request handling out of server.py into
+# pycsw/ogc/csw/csw2.py, where getrecords reaches the helper through
+# self.parent. Both locations ask the same question of the same code.
+signal:
+  code_any:
+    - file: pycsw/server.py
+      symbol: Csw.getrecords
+      rule:
+        calls: self._cql_update_queryables_mappings
+        indicates: vulnerable
+
+    - file: pycsw/ogc/csw/csw2.py
+      symbol: Csw2.getrecords
+      rule:
+        calls: self.parent._cql_update_queryables_mappings
+        indicates: vulnerable

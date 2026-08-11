@@ -225,3 +225,33 @@ func TestSelectBoundariesStillProbesLinesAboveTheClaims(t *testing.T) {
 		t.Error("1.0.0 is below the claim's fixed version and is already covered")
 	}
 }
+
+// Overlapping claims must not manufacture a disagreement.
+//
+// tqdm's advisory carries >= 4.4.1, < 4.11.2 alongside >= 4.10.0, < 4.11.2.
+// 4.9.0 sits below the second claim's introduced version while inside the
+// first, so the advisory says it is affected. Probing it as below-introduced
+// asserts the opposite, and finding the construct there reports a disagreement
+// that does not exist.
+//
+// A false correction filed against a maintainer is the most expensive way this
+// tool can fail, so this is the direction to be strict about.
+func TestSelectBoundariesIgnoresBelowIntroducedInsideAnotherClaim(t *testing.T) {
+	available := tags("4.4.0", "4.4.1", "4.9.0", "4.10.0", "4.11.1", "4.11.2")
+	claims := []Claim{
+		{Introduced: "4.4.1", Fixed: "4.11.2"},
+		{Introduced: "4.10.0", Fixed: "4.11.2"},
+	}
+
+	got := rules(SelectBoundaries(claims, available))
+	if r, ok := got["4.9.0"]; ok && r == RuleBelowIntroduced {
+		t.Errorf("4.9.0 selected as %s, but the first claim covers it: the "+
+			"advisory already says it is affected", r)
+	}
+
+	// The genuinely-uncovered edge below the widest claim still gets probed.
+	if got["4.4.0"] != RuleBelowIntroduced {
+		t.Errorf("4.4.0 = %q, want below-introduced: no claim covers it",
+			got["4.4.0"])
+	}
+}

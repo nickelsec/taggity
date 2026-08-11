@@ -643,3 +643,64 @@ func TestAuditTrytondUnderReport(t *testing.T) {
 			"decorated method is still a method")
 	}
 }
+
+// TestAuditTqdmOverlappingClaims is the corpus case for a false positive that
+// overlapping ranges used to manufacture.
+//
+// GHSA-r7q7-xcjw-qx8q claims >= 4.4.1, < 4.11.2 alongside >= 4.10.0, < 4.11.2.
+// 4.9.0 sits below the second claim's introduced version while inside the
+// first, so the advisory already says it is affected. Selecting it as
+// below-introduced asserted the opposite and reported a disagreement against a
+// correct advisory.
+//
+// The fix is danger-shaped: _sh, a subprocess wrapper run at import time, was
+// deleted outright.
+func TestAuditTqdmOverlappingClaims(t *testing.T) {
+	rep := runCorpusAudit(t, "GHSA-r7q7-xcjw-qx8q")
+
+	for _, f := range rep.Findings() {
+		t.Errorf("false finding %s %v: 4.9.0 is inside the wider claim, so the "+
+			"advisory does not call it safe", f.Span(), f.Rules)
+	}
+
+	v := verdicts(rep)
+	if v["4.11.1"] != taggity.Vulnerable {
+		t.Errorf("4.11.1 = %v, want VULNERABLE: _sh is still called there",
+			v["4.11.1"])
+	}
+	// 4.11.2 deleted the whole block, so the symbol is gone. That is a gap, not
+	// a clean bill of health.
+	if v["4.11.2"] == taggity.NotVulnerable {
+		t.Error("4.11.2 = NOT_VULNERABLE, but commit_hash no longer exists " +
+			"there; a symbol that vanished was not examined")
+	}
+}
+
+// TestAuditPycswAgreesAcrossThreeBranches is a negative control that needs
+// code_any to reach every branch.
+//
+// GHSA-hg4c-rgvm-964g patches a SQL injection in pycsw's CQL_TEXT handling
+// across three lines. The 2.x line moved CSW request handling out of server.py
+// into pycsw/ogc/csw/csw2.py, where getrecords reaches the helper through
+// self.parent, so a spec naming one file answers for only part of the range.
+//
+// The helper is still defined after the fix and called elsewhere, so a rule
+// counting occurrences in the file would never reach zero. Asking about
+// getrecords specifically is what makes the boundary visible.
+func TestAuditPycswAgreesAcrossThreeBranches(t *testing.T) {
+	rep := runCorpusAudit(t, "GHSA-hg4c-rgvm-964g")
+	// 1.8.6 and 1.10.5 predate csw2.py, so gaps are expected there.
+	requireSilent(t, rep, true)
+
+	v := verdicts(rep)
+	for _, ver := range []string{"1.8.5", "1.10.4", "2.0.1"} {
+		if v[ver] != taggity.Vulnerable {
+			t.Errorf("%s = %v, want VULNERABLE: the unsafe call is still in "+
+				"getrecords there", ver, v[ver])
+		}
+	}
+	if v["2.0.2"] != taggity.NotVulnerable {
+		t.Errorf("2.0.2 = %v, want NOT_VULNERABLE: the fix routes CQL through "+
+			"cql2fes1 there", v["2.0.2"])
+	}
+}

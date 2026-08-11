@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/nickelsec/taggity/internal/check"
+	"github.com/nickelsec/taggity/internal/git"
 	"github.com/nickelsec/taggity/internal/spec"
 	"github.com/nickelsec/taggity/internal/taggity"
 )
@@ -121,9 +122,22 @@ func (r *Report) UnprobedClaims() []Claim {
 
 	var out []Claim
 	for _, c := range r.Claims {
+		// A claim whose fixed version is not a version bounds nothing that can
+		// be probed. covers() reads an unparseable bound as open above, which
+		// is right for deciding whether a release line was discussed and wrong
+		// here: it would make a commit-hash claim look covered by any probe
+		// above its introduced version.
+		if c.Fixed != "" {
+			if _, ok := git.ParseVersion(c.Fixed); !ok {
+				out = append(out, c)
+				continue
+			}
+		}
+
 		covered := false
 		for _, res := range r.Results {
-			if c.covers(res.Boundary.Version) {
+			v, ok := git.ParseVersion(res.Boundary.Version)
+			if ok && covers(c, v) {
 				covered = true
 				break
 			}

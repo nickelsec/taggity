@@ -1,0 +1,29 @@
+# tqdm arbitrary code execution (CWE-94). _version.py ran `git log` through a
+# subprocess helper at import time to derive a commit hash, so importing tqdm
+# from a directory an attacker controlled could execute their code.
+#
+# The fix deleted the _sh helper and the block that called it.
+#
+# Danger-shaped: the fix REMOVED the call rather than adding a guard, so the
+# rule matches the vulnerable construct and polarity is the natural one.
+#
+# Advisory claims TWO ranges that overlap and share a fixed version:
+#   >= 4.4.1,  < 4.11.2
+#   >= 4.10.0, < 4.11.2
+package:
+  ecosystem: PyPI
+  name: tqdm
+repo: https://github.com/tqdm/tqdm
+advisory: GHSA-r7q7-xcjw-qx8q
+
+authoring:
+  mode: manual
+  reviewed_by: nick
+
+signal:
+  code:
+    file: tqdm/_version.py
+    symbol: commit_hash
+    rule:
+      calls: _sh
+      indicates: vulnerable

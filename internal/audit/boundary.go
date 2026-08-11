@@ -78,9 +78,19 @@ func SelectBoundaries(claims []Claim, available []git.TagRef) []Boundary {
 	for _, c := range claims {
 		if c.Introduced != "" && c.Introduced != "0" {
 			if v, ok := predecessor(rel, c.Introduced); ok {
-				// The advisory says this version is unaffected. If the
-				// construct is present, users of it are not being warned.
-				add(v, RuleBelowIntroduced, false)
+				// The advisory says this version is unaffected, unless another
+				// claim covers it. Ranges overlap in practice: tqdm's advisory
+				// carries >= 4.4.1, < 4.11.2 alongside >= 4.10.0, < 4.11.2, and
+				// 4.9.0 sits below the second while inside the first.
+				//
+				// Probing it as below-introduced asserts the advisory calls it
+				// safe when the advisory says the opposite, and finding the
+				// construct there reports a disagreement that does not exist.
+				// A false correction filed against a maintainer is the most
+				// expensive way this tool can fail.
+				if !coveredByAny(claims, v) {
+					add(v, RuleBelowIntroduced, false)
+				}
 			}
 		}
 		if c.Fixed != "" {
@@ -219,4 +229,22 @@ func majorOfVer(v git.Version) (int, bool) {
 		return 0, false
 	}
 	return v.Release[0], true
+}
+
+// coveredByAny reports whether any claim marks version as affected.
+//
+// Overlapping ranges are common: an advisory may carry a wide claim and a
+// narrower one that shares its fixed version. A version inside the wide claim
+// is claimed affected no matter where it sits relative to the narrow one.
+func coveredByAny(claims []Claim, version string) bool {
+	v, ok := git.ParseVersion(version)
+	if !ok {
+		return false
+	}
+	for _, c := range claims {
+		if covers(c, v) {
+			return true
+		}
+	}
+	return false
 }
