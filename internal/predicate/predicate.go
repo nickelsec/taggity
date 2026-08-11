@@ -30,9 +30,18 @@ const (
 
 	// Methods carry their enclosing class so a spec can disambiguate two
 	// same-named definitions.
+	// A decorated method is wrapped in a decorated_definition node, so the
+	// second pattern is not redundant: without it @classmethod, @staticmethod
+	// and @property methods are invisible to a Class.method lookup and resolve
+	// as symbol_not_found. Decorators are ordinary in Python and Tryton's
+	// Cron._callback is a real case that went unmatched.
 	qMethods = `(class_definition
   name: (identifier) @class
-  body: (block (function_definition name: (identifier) @method) @fn))`
+  body: (block (function_definition name: (identifier) @method) @fn))
+(class_definition
+  name: (identifier) @class
+  body: (block (decorated_definition
+    definition: (function_definition name: (identifier) @method) @fn)))`
 
 	// Dotted sinks such as pickle.loads have an attribute callee rather than an
 	// identifier. Both shapes are captured; Text yields the full dotted name,

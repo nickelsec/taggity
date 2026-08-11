@@ -8,6 +8,28 @@ compatibility promise and neither has earned one yet.
 
 ## [Unreleased]
 
+### Fixed
+
+- A decorated method was invisible to a `Class.method` lookup. tree-sitter wraps
+  it in a `decorated_definition` node, and the method query matched only bare
+  `function_definition` children of a class body, so every `@classmethod`,
+  `@staticmethod` and `@property` resolved as `symbol_not_found` in a language
+  where decorated methods are ordinary.
+
+  This was silent in the worst direction: `symbol_not_found` reads as "the code
+  is not here" rather than "the query could not see it", and under an
+  inverted-polarity spec that is an UNKNOWN where a NOT_VULNERABLE belonged,
+  which suppresses a finding. The fixture covered decorated functions at module
+  level but not a decorated method inside a class, which is why it survived.
+
+### Notes
+
+Tryton GHSA-m9jj-5qvj-5fhx is the second under-report in the corpus and the
+first found without targeting. Its `trytond` claims start at 2.4.0 while
+`safe_eval(cron.args)` is present in 1.8.11, 2.0.9 and 2.2.14, all real PyPI
+releases. The same advisory says `introduced: 0` under the `tryton` package
+name, so the lower bound exists and was not carried across.
+
 ## [0.2.1] - 2026-08-11
 
 ### Fixed

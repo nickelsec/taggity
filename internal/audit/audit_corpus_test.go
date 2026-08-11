@@ -589,3 +589,57 @@ func TestAuditSanicKeepsAGapRatherThanGuessing(t *testing.T) {
 		}
 	}
 }
+
+// TestAuditTrytondUnderReport is the second under-report in the corpus, and the
+// first found by an unbiased sweep rather than by targeting.
+//
+// GHSA-m9jj-5qvj-5fhx patches arbitrary command execution in Tryton's ir.cron:
+// callback arguments were expanded with safe_eval, which despite the name
+// evaluates a Python expression. The fix replaces it with ast.literal_eval and
+// was backported across four branches.
+//
+// The advisory carries entries for two package names. The `tryton` entries say
+// introduced: 0, so the authors knew older releases were affected. The
+// `trytond` entries, which are what a PyPI scanner reads, start at 2.4.0.
+// safe_eval(cron.args) is present in 1.8.11, 2.0.9 and 2.2.14, all real
+// trytond releases.
+//
+// This case also exposed the decorated-method blind spot: _callback is a
+// @classmethod from 2.8 on, and a Class.method lookup could not see it.
+func TestAuditTrytondUnderReport(t *testing.T) {
+	rep := runCorpusAudit(t, "GHSA-m9jj-5qvj-5fhx")
+
+	var spans []string
+	for _, f := range rep.Findings() {
+		spans = append(spans, f.Span())
+		t.Logf("  FINDING  %-16s %-15s %v", f.Span(), f.Verdict, f.Rules)
+	}
+	if len(spans) == 0 {
+		t.Fatal("no finding reported; safe_eval is present below 2.4.0, which " +
+			"the trytond claims never mention")
+	}
+
+	// The four backports must still read correctly, or the finding above is
+	// noise from a spec that does not track the fix.
+	v := verdicts(rep)
+	for _, c := range []struct {
+		version string
+		want    taggity.Verdict
+	}{
+		{"2.4.14", taggity.Vulnerable},
+		{"2.4.15", taggity.NotVulnerable},
+		{"2.6.14", taggity.NotVulnerable},
+		{"2.8.11", taggity.NotVulnerable},
+		{"3.2.3", taggity.NotVulnerable},
+	} {
+		if got, ok := v[c.version]; ok && got != c.want {
+			t.Errorf("%s = %v, want %v", c.version, got, c.want)
+		}
+	}
+
+	// 2.8.11 resolves only if a @classmethod is matched as a class method.
+	if v["2.8.11"] == taggity.Unknown {
+		t.Error("2.8.11 = UNKNOWN: _callback is a @classmethod there, and a " +
+			"decorated method is still a method")
+	}
+}

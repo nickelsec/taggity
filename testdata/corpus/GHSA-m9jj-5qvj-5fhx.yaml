@@ -1,0 +1,44 @@
+# Tryton arbitrary command execution (CWE-77). ir.cron stored callback
+# arguments as a string and expanded them with safe_eval, which despite the
+# name evaluates a Python expression. A user able to write a cron record could
+# run arbitrary code as the cron user.
+#
+# The fix replaced safe_eval with ast.literal_eval, which parses literals only.
+#
+# Danger-shaped, which is rare: the fix REMOVED the dangerous call rather than
+# adding a guard, so the rule matches the vulnerable construct and polarity is
+# the natural one.
+#
+# Advisory claims FIVE ranges for trytond, fixed independently. This is the
+# deepest backport in the corpus:
+#   >= 2.4.0, < 2.4.15
+#   >= 2.6.0, < 2.6.14
+#   >= 2.8.0, < 2.8.11
+#   >= 3.0.0, < 3.0.7
+#   >= 3.2.0, < 3.2.3
+#
+# FINDING: the lowest claim starts at 2.4.0, but safe_eval(cron.args) is in
+# 1.8.11, 2.0.9 and 2.2.14, all of which are real trytond releases on PyPI.
+#
+# The advisory carries entries for two package names. The `tryton` entries use
+# introduced: 0, so the authors knew earlier versions were affected. The
+# `trytond` entries, which are the ones a PyPI scanner reads, start at 2.4.0.
+# A scanner checking trytond==1.8.11 stays silent on a version that runs
+# safe_eval over a user-writable field.
+package:
+  ecosystem: PyPI
+  name: trytond
+repo: https://github.com/tryton/trytond
+advisory: GHSA-m9jj-5qvj-5fhx
+
+authoring:
+  mode: manual
+  reviewed_by: nick
+
+signal:
+  code:
+    file: trytond/ir/cron.py
+    symbol: Cron._callback
+    rule:
+      calls: safe_eval
+      indicates: vulnerable

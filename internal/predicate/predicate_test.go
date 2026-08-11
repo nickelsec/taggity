@@ -307,3 +307,68 @@ func TestDefaultsOnBrokenSourceIsUnknown(t *testing.T) {
 		t.Errorf("verdict = %v, want UNKNOWN", got.Verdict)
 	}
 }
+
+// A decorated method is still a method. tree-sitter wraps it in a
+// decorated_definition node, so a query matching only bare function_definition
+// children of a class body misses every @classmethod, @staticmethod and
+// @property in the language.
+//
+// This was silent: a qualified lookup returned symbol_not_found, which reads as
+// "the code is not here" rather than "the query could not see it". Tryton's
+// Cron._callback is the real case that exposed it.
+func TestDecoratedMethodsResolve(t *testing.T) {
+	cases := map[string]string{
+		"classmethod": `
+class Cron:
+    @classmethod
+    def _callback(cls, cron):
+        return safe_eval(cron.args)
+`,
+		"staticmethod": `
+class Cron:
+    @staticmethod
+    def _callback(cron):
+        return safe_eval(cron.args)
+`,
+		"stacked decorators": `
+class Cron:
+    @classmethod
+    @deprecated
+    def _callback(cls, cron):
+        return safe_eval(cron.args)
+`,
+		"undecorated still works": `
+class Cron:
+    def _callback(self, cron):
+        return safe_eval(cron.args)
+`,
+	}
+
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			got := predicate.Calls([]byte(src), []string{"Cron._callback"}, "safe_eval")
+			if got.Verdict != taggity.Vulnerable {
+				t.Errorf("Cron._callback = %v [%s], want VULNERABLE",
+					got.Verdict, got.Reason)
+			}
+		})
+	}
+}
+
+// The decorated pattern must not break scoping: a call in a nested function
+// belongs to that function, not to the method that encloses it.
+func TestDecoratedMethodStillScopesNestedCalls(t *testing.T) {
+	const src = `
+class Cron:
+    @classmethod
+    def _callback(cls, cron):
+        def inner():
+            return safe_eval(cron.args)
+        return inner
+`
+	got := predicate.Calls([]byte(src), []string{"Cron._callback"}, "safe_eval")
+	if got.Verdict != taggity.NotVulnerable {
+		t.Errorf("verdict = %v, want NOT_VULNERABLE: the call belongs to inner",
+			got.Verdict)
+	}
+}

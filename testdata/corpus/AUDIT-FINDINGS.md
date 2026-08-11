@@ -441,14 +441,71 @@ dangerous call, so all five specs needed `indicates: fixed`. Across eight
 multi-branch advisories now audited, only Vitrage was danger-shaped. The `calls`
 vocabulary was designed around the shape that turns out to be the exception.
 
+## The second under-report: trytond, and the first found without targeting
+
+GHSA-m9jj-5qvj-5fhx patches arbitrary command execution in Tryton's `ir.cron`.
+Callback arguments were expanded with `safe_eval`, which despite the name
+evaluates a Python expression, so anyone able to write a cron record ran code as
+the cron user. The fix replaces it with `ast.literal_eval`.
+
+Four branches, four backports, all located correctly:
+
+```
+2.4.14 VULNERABLE   2.4.15 NOT_VULNERABLE
+2.6.13 VULNERABLE   2.6.14 NOT_VULNERABLE
+2.8.10 VULNERABLE   2.8.11 NOT_VULNERABLE
+3.2.2  VULNERABLE   3.2.3  NOT_VULNERABLE
+```
+
+**The finding is below all of them.** The advisory carries entries for two
+package names. The `tryton` entries say `introduced: 0`. The `trytond` entries,
+which are what a PyPI scanner reads, start at **2.4.0**.
+
+`safe_eval(cron.args)` is present in 1.8.11, 2.0.9 and 2.2.14, and all three are
+real `trytond` releases on PyPI. A scanner checking `trytond==1.8.11` stays
+silent about a version that evaluates a user-writable field.
+
+The advisory's authors knew: they wrote `introduced: 0` for the same
+vulnerability under the other package name. The lower bound was not carried
+across.
+
+This is the second under-report in the corpus and the first found without
+targeting. The qutebrowser case was reached by looking for advisories that
+looked wrong; this one came out of a mechanical sweep.
+
+### The defect this case exposed: decorated methods were invisible
+
+`Cron._callback` is a plain method through 2.6 and a `@classmethod` from 2.8 on.
+The 2.8 and 3.2 probes returned `UNKNOWN [symbol_not_found]` while the source
+plainly contained the method.
+
+tree-sitter wraps a decorated method in a `decorated_definition` node, and the
+method query matched only bare `function_definition` children of a class body.
+So **every `@classmethod`, `@staticmethod` and `@property` was invisible to a
+`Class.method` lookup**, in a language where decorated methods are ordinary.
+
+It was silent in the worst way: `symbol_not_found` reads as "the code is not
+here" rather than "the query could not see it". Under an inverted-polarity spec
+that is an UNKNOWN where a NOT_VULNERABLE belonged, which suppresses a finding.
+
+The fixture already covered decorated *functions* at module level, which is why
+this survived. It did not cover a decorated method inside a class.
+
+The `did you mean` suggestion added in 0.2.0 is what made it obvious: the report
+said `symbol Cron._callback not found; did you mean _callback?`, which is a
+strange thing to say about a method that exists, and pointed straight at the
+query rather than at the advisory.
+
 ## The unbiased run: four advisories, no findings
 
 Every earlier run targeted advisories chosen because something looked wrong.
 This one did not. The whole PyPI OSV database was filtered mechanically and the
 first four workable candidates were audited, whatever they turned out to say.
 
-**24,848 advisories → 3,294 multi-range with a repository → 35 workable → 4
-audited.** Nothing was skipped after a spec was written.
+**24,848 advisories → 3,294 multi-range with a repository → 35 workable → 5
+audited.** Nothing was skipped after a spec was written. The fifth, trytond, is
+the under-report recorded above; the four below are the ones that came back
+clean.
 
 | advisory | package | ranges | probed | result |
 |---|---|---|---|---|
@@ -457,15 +514,19 @@ audited.** Nothing was skipped after a spec was written.
 | GHSA-5hr4-253g-cpx2 | web3 | 2 | 9 of 257 | consistent, 1 narrower |
 | GHSA-8cw9-5hmv-77w6 | sanic | 3 | 9 of 89 | consistent, 4 gaps |
 
-**Zero findings.** Every spec reproduced both fix boundaries by hand first, so
-the silence is the tool agreeing with four correct advisories rather than the
-tool failing to look.
+**Zero findings across these four.** Every spec reproduced both fix boundaries
+by hand first, so the silence is the tool agreeing with four correct advisories
+rather than the tool failing to look.
 
-That is the number the earlier sessions could not produce. One under-report in
-five hand-picked advisories says nothing about a rate, because the picking was
-the point. Four out of four clean on an unbiased sample says the base rate of
-wrong ranges is low, and that the finding rate quoted anywhere should describe
-targeted hunting, not auditing in general.
+With trytond that makes **one under-report in five mechanically selected
+advisories**, against one in five when the picking was deliberate. Five is a
+small sample and the two rates should not be compared as though they were
+measured, but the useful claim is narrower and now supported: wrong ranges are
+found without needing to guess which advisories to look at.
+
+What the earlier sessions could not say, and this run can: the finding did not
+depend on judgement about which advisory looked suspect. The filter was
+mechanical and trytond came out of it.
 
 ### What the rejections say
 
