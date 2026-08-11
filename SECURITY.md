@@ -19,13 +19,6 @@ that may come from someone else. In scope:
 - Resource exhaustion from a crafted source file
 - Cache poisoning that attributes one package's results to another
 
-A wrong `NOT_VULNERABLE` verdict counts too. If taggity clears a version that
-does contain the construct its spec describes, a scanner downstream stays quiet
-and nobody gets told to upgrade. Report that through the same channel.
-
-Verdicts wrong the other way, `VULNERABLE` or `UNKNOWN` where the truth is safe,
-are ordinary bugs. Open a public issue with a fixture that reproduces it.
-
 ## Out of scope
 
 - Vulnerabilities in the packages taggity analyzes. Report those to their

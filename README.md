@@ -129,7 +129,7 @@ landed in 2.4.0, and the GHSA record for the same CVE uses one correct range of
 `taggity init` will scaffold a spec if you would rather not write the YAML by
 hand.
 
-## Three-valued verdicts
+## Three valued verdicts
 
 Verdicts are `VULNERABLE`, `NOT_VULNERABLE`, or `UNKNOWN`.
 
