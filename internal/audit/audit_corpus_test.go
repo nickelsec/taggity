@@ -490,3 +490,102 @@ func TestAuditPymatgenDangerShaped(t *testing.T) {
 			"probeable and should not be selected", len(rep.Results))
 	}
 }
+
+// The three cases below came from an unbiased sweep of the PyPI OSV database
+// rather than from advisories that looked suspect. All three are correct, which
+// is the point: they catch a false finding, and they were selected by a filter
+// rather than by judgement.
+
+// TestAuditLektorAgreesWithACorrectAdvisory is a two-branch negative control.
+//
+// GHSA-wv28-7fpw-fj49 patches a path traversal in Lektor's editor API:
+// make_editor_session took a path from the admin API without checking it stayed
+// inside the database root. The fix adds a _is_valid_path guard and shipped on
+// 3.3.11 and 3.4.0b11. Checked by hand, the advisory is right at both.
+func TestAuditLektorAgreesWithACorrectAdvisory(t *testing.T) {
+	rep := runCorpusAudit(t, "GHSA-wv28-7fpw-fj49")
+	requireSilent(t, rep, false)
+
+	v := verdicts(rep)
+	// Inverted polarity: VULNERABLE means the guard is present.
+	if v["3.3.11"] != taggity.Vulnerable {
+		t.Errorf("3.3.11 = %v, want VULNERABLE: the guard ships there", v["3.3.11"])
+	}
+
+	// The second claim is fixed on a beta, and boundary selection probes only
+	// released versions. That leaves the branch unexamined, which the report
+	// has to say rather than counting the rest as agreement.
+	unprobed := rep.UnprobedClaims()
+	if len(unprobed) != 1 {
+		t.Fatalf("unprobed claims = %d, want 1: >= 3.4.0b1, < 3.4.0b11 has no "+
+			"released version at either edge", len(unprobed))
+	}
+	if unprobed[0].Fixed != "3.4.0b11" {
+		t.Errorf("unprobed claim = %v, want the beta branch", unprobed[0])
+	}
+}
+
+// TestAuditWeb3ReportsAnUnprobedBetaBranch is a negative control for the
+// mainline branch and the case for saying so when a branch is skipped.
+//
+// GHSA-5hr4-253g-cpx2 patches an SSRF in web3.py's CCIP Read handling. It
+// claims two branches: >= 6.0.0b3, < 7.15.0, and >= 8.0.0b1, < 8.0.0b2. Only
+// the first has a released edge, so the second is never probed.
+//
+// 7.16.0 lands as narrower-than-claimed, which is correct and not a finding:
+// it carries the guard and sits above the claimed fix, so the advisory says
+// nothing about it.
+func TestAuditWeb3ReportsAnUnprobedBetaBranch(t *testing.T) {
+	rep := runCorpusAudit(t, "GHSA-5hr4-253g-cpx2")
+
+	for _, f := range rep.Findings() {
+		t.Errorf("false finding %s %v: the advisory is correct where it was "+
+			"probed", f.Span(), f.Rules)
+	}
+
+	v := verdicts(rep)
+	if v["7.15.0"] != taggity.Vulnerable {
+		t.Errorf("7.15.0 = %v, want VULNERABLE: the mainline fix ships there",
+			v["7.15.0"])
+	}
+	if v["7.14.1"] != taggity.NotVulnerable {
+		t.Errorf("7.14.1 = %v, want NOT_VULNERABLE: the guard is not there yet",
+			v["7.14.1"])
+	}
+
+	unprobed := rep.UnprobedClaims()
+	if len(unprobed) != 1 || unprobed[0].Fixed != "8.0.0b2" {
+		t.Errorf("unprobed claims = %v, want the 8.0.0b1-8.0.0b2 branch: both "+
+			"edges are pre-releases and neither is probed", unprobed)
+	}
+}
+
+// TestAuditSanicKeepsAGapRatherThanGuessing is the case for what `any` costs.
+//
+// GHSA-8cw9-5hmv-77w6 patches a path traversal in Sanic's static handler across
+// three branches. The handler moved from a module-level function in
+// sanic/static.py to a mixin method, so the spec names both. At 21.12.2 the
+// mixin proves the construct absent, but sanic/static.py does not exist at that
+// tag, so the version reads UNKNOWN rather than NOT_VULNERABLE.
+//
+// That is the prime directive costing something real: one location examined and
+// clean does not license a verdict about a location that was never read.
+func TestAuditSanicKeepsAGapRatherThanGuessing(t *testing.T) {
+	rep := runCorpusAudit(t, "GHSA-8cw9-5hmv-77w6")
+	requireSilent(t, rep, true)
+
+	v := verdicts(rep)
+	for _, ver := range []string{"20.12.6", "21.12.1", "22.6.0"} {
+		if v[ver] != taggity.Vulnerable {
+			t.Errorf("%s = %v, want VULNERABLE: the weak check is still there",
+				ver, v[ver])
+		}
+	}
+	// The fixed versions must not read as clean when a location was unreadable.
+	for _, ver := range []string{"21.12.2", "22.6.1"} {
+		if v[ver] == taggity.NotVulnerable {
+			t.Errorf("%s = NOT_VULNERABLE, but sanic/static.py could not be "+
+				"read there; an unexamined location is not a clean one", ver)
+		}
+	}
+}

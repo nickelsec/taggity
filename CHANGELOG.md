@@ -8,6 +8,32 @@ compatibility promise and neither has earned one yet.
 
 ## [Unreleased]
 
+### Fixed
+
+- An advisory claim with no released version at either edge was probed by
+  nobody and reported as nothing. Boundary selection only considers released
+  versions, which is correct, but a branch fixed on a pre-release then vanished
+  from the report: the remaining boundaries counted as consistent and a
+  two-branch advisory read as fully agreed with when one branch was never
+  examined. `audit` now prints the claims it could not probe. This also covers
+  a claim naming a commit hash where a version belongs, which two corpus
+  advisories do.
+
+### Changed
+
+- `RuleString` says "listed first" rather than "first" for a multi-location
+  spec. It describes the spec, not any one answer: across a version range
+  different locations answer as the code moves, and per-version output already
+  names the one that did.
+
+### Notes
+
+Four advisories audited from an unbiased sweep of the PyPI database rather than
+from cases that looked suspect, and all four are correct. Recorded in
+`testdata/corpus/AUDIT-FINDINGS.md` with what the filter rejected and why: a
+third of multi-range PyPI advisories name a CWE this vocabulary cannot ask
+about, which is the gap measured rather than asserted.
+
 ## [0.2.0] - 2026-08-11
 
 A minor release rather than a patch: three spec fields are new, so a spec

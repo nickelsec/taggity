@@ -441,6 +441,115 @@ dangerous call, so all five specs needed `indicates: fixed`. Across eight
 multi-branch advisories now audited, only Vitrage was danger-shaped. The `calls`
 vocabulary was designed around the shape that turns out to be the exception.
 
+## The unbiased run: four advisories, no findings
+
+Every earlier run targeted advisories chosen because something looked wrong.
+This one did not. The whole PyPI OSV database was filtered mechanically and the
+first four workable candidates were audited, whatever they turned out to say.
+
+**24,848 advisories → 3,294 multi-range with a repository → 35 workable → 4
+audited.** Nothing was skipped after a spec was written.
+
+| advisory | package | ranges | probed | result |
+|---|---|---|---|---|
+| GHSA-wv28-7fpw-fj49 | lektor | 2 | 3 of 52 | consistent |
+| GHSA-gh82-f9x8-5frx | keras | 2 | 5 of 120 | consistent |
+| GHSA-5hr4-253g-cpx2 | web3 | 2 | 9 of 257 | consistent, 1 narrower |
+| GHSA-8cw9-5hmv-77w6 | sanic | 3 | 9 of 89 | consistent, 4 gaps |
+
+**Zero findings.** Every spec reproduced both fix boundaries by hand first, so
+the silence is the tool agreeing with four correct advisories rather than the
+tool failing to look.
+
+That is the number the earlier sessions could not produce. One under-report in
+five hand-picked advisories says nothing about a rate, because the picking was
+the point. Four out of four clean on an unbiased sample says the base rate of
+wrong ranges is low, and that the finding rate quoted anywhere should describe
+targeted hunting, not auditing in general.
+
+### What the rejections say
+
+The filter's rejections are more informative than its survivors:
+
+| rejected | reason |
+|---|---|
+| 2,016 | not Python, or enterprise backport sprawl (TensorFlow, Salt) |
+| 1,108 | CWE not expressible as a call or a default |
+| 58 | memory-safety class, so native code |
+| 26 | no fix commit or PR to read |
+
+**A third of multi-range PyPI advisories name a CWE this vocabulary cannot
+ask about.** That is the vocabulary gap measured rather than asserted.
+
+Two of the 35 survivors turned out to be inexpressible only after the diff was
+read, which no CWE filter would have caught:
+
+- **RestrictedPython GHSA-xjw2-6jm9-rf67.** The fix widened a conditional from
+  `isinstance(object, str) and name == 'format'` to also cover `format_map` and
+  `str` subclasses, and wrapped a module in an attribute delegator. No call is
+  added or removed, so there is nothing for `calls` to ask.
+- **tortoise-orm GHSA-9j2c-x8qm-qmjq.** The fix monkey-patches PyPika's value
+  wrapper with escaping logic. The vulnerability is what the function does, not
+  which functions it calls.
+
+Both are the documented limit: a rule asks whether a construct is present, which
+is not the same question as whether a bug is.
+
+### What the run exercised
+
+**Tag normalisation, on real data.** web3.py tags releases `v8.0.0-beta.2` while
+the advisory claims `8.0.0b2`. Both normalise to the same PEP 440 version and
+the probe resolved correctly. That path had only ever been exercised by tests.
+
+**The `any` combinator refusing to guess.** Sanic 21.12.2 has the fix, and
+`sanic/mixins/routes.py` proves the vulnerable construct absent. But
+`sanic/static.py` does not exist at that tag, so the version reads `UNKNOWN
+[file_absent]` rather than NOT_VULNERABLE. One location examined and clean does
+not license a verdict about a location never read.
+
+Worth stating plainly because it has a cost: a spec spanning eras with
+`code_any` reports fixed versions as UNKNOWN once the older file disappears.
+Correct under the prime directive, and noisier than a reader expects.
+
+### The defect this run exposed: a whole claim probed by nobody
+
+Both lektor and web3.py fix their second branch on a **pre-release**:
+`>= 3.4.0b1, < 3.4.0b11` and `>= 8.0.0b1, < 8.0.0b2`. Boundary selection
+deliberately skips pre-releases, because an advisory range is a statement about
+releases and probing a release candidate invites noise. That decision is right.
+
+What was wrong is what happened next. Neither edge is a released version, so
+**no boundary was selected anywhere in the claim** and the report said:
+
+```
+  probed  3 of 52 tags
+  0 finding(s) · 3 consistent · 0 narrower · 0 gap(s)
+```
+
+Three consistent, nothing else, reading as agreement with a two-branch
+advisory whose second branch was never looked at. Not a wrong verdict, a
+missing one presented as agreement, which is the failure mode this project
+exists to complain about in other people's data.
+
+`Report.UnprobedClaims` now reports it, and the audit prints:
+
+```
+  NOT PROBED (no released version at these edges)
+    >= 3.4.0b1, < 3.4.0b11
+```
+
+It fires on two existing corpus cases too, both correctly. pymatgen
+(PYSEC-2024-226) and qutebrowser (PYSEC-2021-382) each carry a claim naming a
+**commit hash** where a fixed version belongs. Boundary selection already
+dropped those as unprobeable and the notes above already recorded it; what is
+new is that the report says so instead of the reader having to know.
+
+**A danger-shaped fix in the wild.** Sanic's fix deletes the weak
+`sub("^[/]*", ...)` strip rather than adding a guard, so its spec uses the
+natural polarity. Three of three vulnerable versions matched. That is the third
+danger-shaped case in the corpus and it remains the exception: the other three
+advisories in this run were all guard-shaped.
+
 ## Next
 
 Nine advisories audited across four sessions: two real findings, one of them an
@@ -448,11 +557,17 @@ under-report, and five engine defects. Three of those defects were surfaced by
 running unfamiliar cases; the other two by property tests over generated claim
 shapes, which is the cheaper way to find them.
 
+The unbiased run adds four more, for **thirteen advisories and two findings**.
+
 The open question is no longer whether findings exist. It is whether the
-disagreement-to-finding ratio is workable at scale: this run produced three
-disagreements, of which one was real. A researcher auditing fifty advisories
-would read fifty reports to file perhaps ten corrections, which is worth it, but
-only if resolving each disagreement stays a matter of minutes.
+disagreement-to-finding ratio is workable at scale: the targeted run produced
+three disagreements, of which one was real. A researcher auditing fifty
+advisories would read fifty reports to file perhaps ten corrections, which is
+worth it, but only if resolving each disagreement stays a matter of minutes.
+
+The unbiased run reframes that estimate downward. Four correct advisories in a
+row, mechanically selected, suggests ten corrections per fifty is a targeted-
+hunting rate rather than a general one. The value is in choosing which fifty.
 
 The corpus now holds seven audited advisories with tests, four of them negative
 controls. Those are the cases that catch false positives, and one already has:

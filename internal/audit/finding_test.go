@@ -151,3 +151,73 @@ func TestEmptyReportHasNoFindings(t *testing.T) {
 		t.Errorf("empty report yielded %d unknown groups", len(got))
 	}
 }
+
+// A claim with no probed version anywhere in it was never examined, and a
+// report that stays quiet about it reads as agreement with the whole advisory.
+//
+// This happens for real in two shapes: a branch fixed on a pre-release, since
+// boundary selection probes only released versions, and a claim naming a commit
+// hash where a version belongs.
+func TestUnprobedClaimsAreReported(t *testing.T) {
+	cases := []struct {
+		name    string
+		claims  []Claim
+		results []Result
+		want    int
+	}{
+		{
+			name: "a branch fixed on a prerelease is never probed",
+			claims: []Claim{
+				{Introduced: "0", Fixed: "3.3.11"},
+				{Introduced: "3.4.0b1", Fixed: "3.4.0b11"},
+			},
+			results: []Result{
+				res("3.3.10", Consistent, taggity.NotVulnerable, "", RuleBelowFixed),
+				res("3.3.11", Consistent, taggity.Vulnerable, "", RuleFixed),
+			},
+			want: 1,
+		},
+		{
+			name:   "a claim naming a commit hash is not probeable",
+			claims: []Claim{{Introduced: "0", Fixed: "c231cbd3d5147ee920a37b6ee9dd236b376bcf5a"}},
+			results: []Result{
+				res("2024.2.20", Consistent, taggity.NotVulnerable, "", RuleFixed),
+			},
+			want: 1,
+		},
+		{
+			name:   "a claim probed at its fixed edge is covered",
+			claims: []Claim{{Introduced: "0", Fixed: "3.3.11"}},
+			results: []Result{
+				res("3.3.11", Consistent, taggity.Vulnerable, "", RuleFixed),
+			},
+			want: 0,
+		},
+		{
+			name:   "a claim probed in its interior is covered",
+			claims: []Claim{{Introduced: "2.0.0", Fixed: "2.4.0"}},
+			results: []Result{
+				res("2.3.9", Consistent, taggity.NotVulnerable, "", RuleBelowFixed),
+			},
+			want: 0,
+		},
+		{
+			name:   "an open-ended claim is covered by any probe above it",
+			claims: []Claim{{Introduced: "1.0.0"}},
+			results: []Result{
+				res("2.0.0", Consistent, taggity.NotVulnerable, "", RuleUnmentioned),
+			},
+			want: 0,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := &Report{Claims: c.claims, Results: c.results}
+			if got := len(r.UnprobedClaims()); got != c.want {
+				t.Errorf("UnprobedClaims() = %d, want %d: %v",
+					got, c.want, r.UnprobedClaims())
+			}
+		})
+	}
+}

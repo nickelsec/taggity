@@ -103,6 +103,42 @@ func (r *Report) Overclaims() []Finding {
 	return r.group(func(res Result) bool { return res.Outcome == Narrower })
 }
 
+// UnprobedClaims returns claims no boundary was selected for.
+//
+// Boundary selection only probes released versions, because an advisory range
+// is a statement about releases. When a claim's own edges are all pre-releases,
+// that leaves the claim entirely unexamined: web3.py's `>= 8.0.0b1, < 8.0.0b2`
+// and Lektor's `>= 3.4.0b1, < 3.4.0b11` are both fixed on a beta.
+//
+// Without this the report counts the remaining boundaries as consistent and
+// reads as agreement with the whole advisory, when a claimed branch was never
+// looked at. A claim nobody probed is not a claim the engine agrees with.
+func (r *Report) UnprobedClaims() []Claim {
+	probed := make(map[string]bool, len(r.Results))
+	for _, res := range r.Results {
+		probed[res.Boundary.Version] = true
+	}
+
+	var out []Claim
+	for _, c := range r.Claims {
+		covered := false
+		for _, res := range r.Results {
+			if c.covers(res.Boundary.Version) {
+				covered = true
+				break
+			}
+		}
+		// The version just below a fixed edge is probed as below-fixed and sits
+		// inside the claim, so a probed claim is normally covered by its own
+		// interior. A claim with no probe anywhere in or at its edges is the
+		// case this reports.
+		if !covered && !probed[c.Fixed] {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // group collapses runs of adjacent matching results that share a verdict and
 // reason. Adjacency is by probe order, which SelectBoundaries already sorts
 // ascending by version.

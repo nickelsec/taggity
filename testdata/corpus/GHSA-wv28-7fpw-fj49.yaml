@@ -1,0 +1,31 @@
+# Lektor path traversal (CWE-22). make_editor_session took a path from the
+# admin API and passed it through without checking it stayed inside the
+# database root, so a crafted path could read and write outside it.
+#
+# The fix added a _is_valid_path guard called at the top of the function.
+#
+# Advisory claims TWO ranges, fixed independently:
+#   < 3.3.11
+#   >= 3.4.0b1, < 3.4.0b11
+#
+# INVERTED POLARITY. The fix ADDED a guard, so the question is "is the guard
+# present":
+#   NOT_VULNERABLE (guard absent)  -> the fix is missing
+#   VULNERABLE     (guard present) -> the fix is applied
+package:
+  ecosystem: PyPI
+  name: lektor
+repo: https://github.com/lektor/lektor
+advisory: GHSA-wv28-7fpw-fj49
+
+authoring:
+  mode: manual
+  reviewed_by: nick
+
+signal:
+  code:
+    file: lektor/editor.py
+    symbol: make_editor_session
+    rule:
+      calls: _is_valid_path
+      indicates: fixed

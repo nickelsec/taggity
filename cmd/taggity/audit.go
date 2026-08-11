@@ -125,6 +125,17 @@ func printAudit(w io.Writer, rep *audit.Report, sp *spec.Spec, tagCount int, ver
 		}
 	}
 
+	// A claim whose edges are all pre-releases gets no probe at all, because
+	// boundary selection only considers released versions. Left unsaid, the
+	// remaining boundaries count as consistent and the report reads as
+	// agreement with an advisory whose second branch was never examined.
+	if unprobed := rep.UnprobedClaims(); len(unprobed) > 0 {
+		fmt.Fprintf(w, "\n  NOT PROBED (no released version at these edges)\n")
+		for _, c := range unprobed {
+			fmt.Fprintf(w, "    %s\n", c)
+		}
+	}
+
 	if gaps := rep.Unknowns(); len(gaps) > 0 {
 		fmt.Fprintf(w, "\n  GAPS (could not answer)\n")
 		for _, g := range gaps {

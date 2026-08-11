@@ -1,0 +1,43 @@
+# Sanic static-file path traversal (CWE-22). app.static checked for the literal
+# "../" and stripped leading slashes with a regex, which an encoded %2F walks
+# straight past.
+#
+# The fix is danger-shaped, which is rare: it REMOVED the weak check rather than
+# adding a guard. On the 21.x and 22.x lines `from re import sub` and the
+# sub("^[/]*", ...) call disappear, replaced by segment inspection. So the rule
+# matches the vulnerable construct directly and polarity is the natural one.
+#
+# Advisory claims THREE ranges, fixed independently:
+#   < 20.12.7
+#   >= 21.0.0, < 21.12.2
+#   >= 22.0.0, < 22.6.1
+#
+# The handler lives in two places across those lines: a module-level function in
+# sanic/static.py through 20.12.x, and a method on the routes mixin from 21.x
+# on. The 20.12 branch fixed it differently again, using Path.resolve, so that
+# location asks its own question.
+package:
+  ecosystem: PyPI
+  name: sanic
+repo: https://github.com/sanic-org/sanic
+advisory: GHSA-8cw9-5hmv-77w6
+
+authoring:
+  mode: manual
+  reviewed_by: nick
+
+signal:
+  code_any:
+    # 21.x and 22.x: the weak regex strip is the vulnerable construct.
+    - file: sanic/mixins/routes.py
+      symbol: RouteMixin._static_request_handler
+      rule:
+        calls: sub
+        indicates: vulnerable
+
+    # Through 20.12.x the same handler is a module-level function.
+    - file: sanic/static.py
+      symbol: _static_request_handler
+      rule:
+        calls: sub
+        indicates: vulnerable

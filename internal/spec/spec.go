@@ -415,8 +415,12 @@ func (s *Spec) RuleString() string {
 	locs := s.Signal.Locations()
 	r := locs[0].Rule.String()
 	if len(locs) > 1 {
-		// A reader has to know the verdict came from several questions, not one.
-		return fmt.Sprintf("any of %d, first: %s", len(locs), r)
+		// A reader has to know the verdict came from several questions, not
+		// one. This describes the spec rather than any single answer: across a
+		// range of versions different locations answer as the code moves, so
+		// naming one would be wrong for most of them. Per-version output names
+		// the location that actually answered.
+		return fmt.Sprintf("any of %d, listed first: %s", len(locs), r)
 	}
 	return r
 }
