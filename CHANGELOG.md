@@ -8,6 +8,13 @@ compatibility promise and neither has earned one yet.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-11
+
+Two verdict-affecting fixes, both found by auditing advisories nobody had read
+before rather than by testing against code already understood. One of them made
+the tool report a disagreement against a correct advisory, which is the
+direction that costs a maintainer's time.
+
 ### Fixed
 
 - Overlapping claims manufactured a disagreement. An advisory may carry a wide
@@ -271,7 +278,8 @@ Binaries for Linux, macOS and Windows on amd64 and arm64, with SHA-256 checksums
 and an SPDX SBOM per archive. Built with `CGO_ENABLED=0` and `-trimpath`,
 timestamped from the commit.
 
-[Unreleased]: https://github.com/nickelsec/taggity/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/nickelsec/taggity/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/nickelsec/taggity/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/nickelsec/taggity/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/nickelsec/taggity/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nickelsec/taggity/releases/tag/v0.1.0
