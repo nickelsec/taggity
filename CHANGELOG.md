@@ -8,6 +8,12 @@ compatibility promise and neither has earned one yet.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-11
+
+A minor release rather than a patch: three spec fields are new, so a spec
+written against this release will not load on 0.1.0. Existing specs are
+unchanged and every 0.1.0 spec still validates.
+
 ### Added
 
 - `defaults` rule kind, asking whether a symbol declares a parameter with a
@@ -198,5 +204,6 @@ Binaries for Linux, macOS and Windows on amd64 and arm64, with SHA-256 checksums
 and an SPDX SBOM per archive. Built with `CGO_ENABLED=0` and `-trimpath`,
 timestamped from the commit.
 
-[Unreleased]: https://github.com/nickelsec/taggity/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/nickelsec/taggity/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/nickelsec/taggity/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nickelsec/taggity/releases/tag/v0.1.0

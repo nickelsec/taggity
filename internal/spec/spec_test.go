@@ -203,7 +203,7 @@ authoring:
 `
 	s, err := spec.Parse([]byte(src))
 	if err != nil {
-		t.Fatalf("v0.2.0 fields rejected by the v0.1.0 parser: %v", err)
+		t.Fatalf("authoring provenance rejected: %v", err)
 	}
 	if s.Authoring.Mode != "ai" || s.Authoring.ReviewedBy != "nick" {
 		t.Errorf("authoring lost: %+v", s.Authoring)
@@ -222,9 +222,9 @@ const withAliases = `      calls: eval
         confidence: 0.8
         approved_by: nick`
 
-// The alias schema must survive a v0.1.0 parser structurally, so a v0.2.0 spec
-// needs no migration. Forward compatibility is about the shape of the document,
-// not about whether this release acts on it.
+// The alias schema unmarshals on its own, separately from Validate. Parsing and
+// validation failing together would hide which one broke, and the document
+// shape is what a spec written against an older release depends on.
 func TestAliasSchemaStillParses(t *testing.T) {
 	src := strings.Replace(minimal, "      calls: eval", withAliases, 1)
 
