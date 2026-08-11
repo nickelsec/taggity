@@ -488,3 +488,47 @@ func TestConsistentPolarityAcrossLocationsIsFine(t *testing.T) {
 		t.Error("spec polarity should follow its locations")
 	}
 }
+
+// A repeated location asks one question twice. It cannot change a verdict, but
+// it doubles the work and prints one answer as if two places agreed.
+func TestValidateRejectsDuplicateLocations(t *testing.T) {
+	const dup = `
+package:
+  ecosystem: PyPI
+  name: foo
+repo: https://github.com/example/foo
+signal:
+  code_any:
+    - file: a.py
+      symbol: f
+      rule: { calls: eval }
+    - file: a.py
+      symbol: f
+      rule: { calls: eval }
+`
+	if _, err := spec.Parse([]byte(dup)); err == nil {
+		t.Error("a repeated location was accepted")
+	} else if !strings.Contains(err.Error(), "repeats") {
+		t.Errorf("error = %q, want it to name the repetition", err)
+	}
+
+	// Same file and symbol asking a different question is not a duplicate: one
+	// fix can add a guard and remove a sink in the same function.
+	const distinct = `
+package:
+  ecosystem: PyPI
+  name: foo
+repo: https://github.com/example/foo
+signal:
+  code_any:
+    - file: a.py
+      symbol: f
+      rule: { calls: eval }
+    - file: a.py
+      symbol: f
+      rule: { calls: exec }
+`
+	if _, err := spec.Parse([]byte(distinct)); err != nil {
+		t.Errorf("two different rules on one symbol were rejected: %v", err)
+	}
+}

@@ -178,3 +178,51 @@ func TestCheckOutputWarnsOnInvertedPolarity(t *testing.T) {
 		t.Errorf("a danger-shaped spec must not carry the inversion note:\n%s", plain)
 	}
 }
+
+// The deciding row is found by position, not by value. Two locations can hold
+// equal records, and marking every equal one would claim several places agreed
+// when only one was consulted.
+func TestCheckOutputMarksExactlyOneRow(t *testing.T) {
+	same := taggity.Evidence{
+		File:    "a.py",
+		Symbol:  "f",
+		Verdict: taggity.Vulnerable,
+		Rule:    "calls: eval",
+		Detail:  "f calls eval",
+	}
+	sig := taggity.Signals{
+		Present:  taggity.Vulnerable,
+		Evidence: []taggity.Evidence{same, same},
+	}
+
+	out := render(t, multiSpec(), sig)
+
+	marked := 0
+	for line := range strings.SplitSeq(out, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "*") {
+			marked++
+		}
+	}
+	if marked != 1 {
+		t.Errorf("marked %d rows, want exactly 1:\n%s", marked, out)
+	}
+}
+
+// Only a match is a match. When every location failed to answer, the deciding
+// record is the one that reported the failure, and calling it "matched" says
+// the opposite of what happened.
+func TestCheckOutputDoesNotClaimAMatchWhenNoneMatched(t *testing.T) {
+	sig := taggity.Signals{
+		Present: taggity.Unknown,
+		Reason:  taggity.ReasonFileAbsent,
+		Evidence: []taggity.Evidence{
+			{File: "a.py", Verdict: taggity.Unknown, Rule: "calls: eval", Detail: "a.py not present at v1.0.0"},
+			{File: "b.py", Verdict: taggity.Unknown, Rule: "calls: eval", Detail: "b.py not present at v1.0.0"},
+		},
+	}
+
+	out := render(t, multiSpec(), sig)
+	if strings.Contains(out, "matched:") {
+		t.Errorf("output claims a match where nothing matched:\n%s", out)
+	}
+}

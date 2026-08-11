@@ -151,10 +151,11 @@ func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals,
 	// arrow marks the deciding row so the breakdown and the summary visibly
 	// agree rather than leaving the reader to infer it.
 	if len(sig.Evidence) > 1 {
+		deciding := sig.DecidingIndex()
 		fmt.Fprintln(w)
-		for _, e := range sig.Evidence {
+		for i, e := range sig.Evidence {
 			mark := "  "
-			if e == ev {
+			if i == deciding {
 				mark = "* "
 			}
 			fmt.Fprintf(w, "  %s%-15s %s  %s\n", mark, e.Verdict, e.File, e.Detail)
@@ -187,7 +188,14 @@ func ruleLine(sp *spec.Spec, sig taggity.Signals, ev taggity.Evidence) string {
 	if len(sig.Evidence) < 2 || ev.Rule == "" {
 		return sp.RuleString()
 	}
-	return fmt.Sprintf("any of %d, matched: %s", len(sig.Evidence), ev.Rule)
+	// Only a match is a match. When no location found the construct the
+	// deciding record is simply the one that answered, and calling that
+	// "matched" would describe the opposite of what happened.
+	label := "answered by"
+	if ev.Verdict == taggity.Vulnerable {
+		label = "matched"
+	}
+	return fmt.Sprintf("any of %d, %s: %s", len(sig.Evidence), label, ev.Rule)
 }
 
 // decidingSymbol names the symbol that was examined. Evidence carries no symbol

@@ -364,3 +364,52 @@ func TestVersionSingleLocationIsUnchanged(t *testing.T) {
 		t.Errorf("read %v, want exactly the spec's one file", src.asked)
 	}
 }
+
+// A missing symbol is either a typo in the spec or a version that genuinely
+// lacks the code. The message has to separate those: the first is fixed by
+// editing one line, the second is a real finding about the version.
+func TestSymbolNotFoundSuggestsACorrection(t *testing.T) {
+	const file = `
+def build_protected_resource_metadata_discovery_urls(www_auth, server):
+    return []
+
+def extract_scope_from_www_auth(response):
+    return None
+`
+	cases := []struct {
+		name    string
+		symbol  string
+		want    string
+		notWant string
+	}{
+		{
+			name:   "a trailing typo names the real symbol",
+			symbol: "build_protected_resource_metadata_discovery_url",
+			want:   "did you mean build_protected_resource_metadata_discovery_urls",
+		},
+		{
+			name:    "an unrelated symbol gets no guess",
+			symbol:  "OAuthClientProvider._discover_protected_resource",
+			notWant: "did you mean",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			src := &fakeSource{commit: "abc123", tag: "v1.0.0", src: file}
+			sig := (&check.Checker{Source: src}).Version(testSpec("a.py", c.symbol), "1.0.0")
+
+			if sig.Overall() != taggity.Unknown {
+				t.Fatalf("verdict = %v, want UNKNOWN", sig.Overall())
+			}
+			got := sig.Deciding().Detail
+			if c.want != "" && !strings.Contains(got, c.want) {
+				t.Errorf("detail = %q, want it to contain %q", got, c.want)
+			}
+			if c.notWant != "" && strings.Contains(got, c.notWant) {
+				t.Errorf("detail = %q, must not guess: a wrong suggestion sends\n"+
+					"the reader to fix a spec that was already correct", got)
+			}
+		})
+	}
+}

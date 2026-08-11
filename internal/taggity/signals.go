@@ -61,20 +61,31 @@ func (s Signals) Overall() Verdict {
 // Vulnerable record is the answer. Without a match every location agreed, and
 // the first record sharing the overall verdict represents them all.
 func (s Signals) Deciding() Evidence {
-	if len(s.Evidence) == 0 {
+	i := s.DecidingIndex()
+	if i < 0 {
 		return Evidence{}
 	}
-	for _, e := range s.Evidence {
+	return s.Evidence[i]
+}
+
+// DecidingIndex is Deciding by position, returning -1 when there is no
+// evidence. Two locations can hold equal records, so a caller marking the
+// deciding row has to compare positions rather than values.
+func (s Signals) DecidingIndex() int {
+	if len(s.Evidence) == 0 {
+		return -1
+	}
+	for i, e := range s.Evidence {
 		if e.Verdict == Vulnerable {
-			return e
+			return i
 		}
 	}
-	for _, e := range s.Evidence {
+	for i, e := range s.Evidence {
 		if e.Verdict == s.Present {
-			return e
+			return i
 		}
 	}
-	return s.Evidence[0]
+	return 0
 }
 
 // Evidence records why a verdict was reached, in enough detail that someone

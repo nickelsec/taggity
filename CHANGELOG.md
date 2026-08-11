@@ -36,6 +36,15 @@ compatibility promise and neither has earned one yet.
   examined. That last one is the output a maintainer checks first. Verdicts were
   correct throughout and none change; only what the output says about them does.
   Single-location specs are unaffected.
+- A not-found symbol now names the closest definitions in the file. The reason
+  code alone cannot separate a typo in the spec from a version that genuinely
+  lacks the code, and those need opposite responses: edit one line, or go read
+  the version. Nothing is suggested when no name is close, since a wrong guess
+  sends the reader to fix a spec that was already right.
+- The rule line claimed a match when the deciding location had not matched, so
+  a run where nothing was found still read `matched:`.
+- Two locations holding equal records were both marked as deciding, which read
+  as agreement between places that were not separately consulted.
 - `.gitignore` listed the built binary as `taggity`, an unanchored pattern that
   git matches against any path component. Every new file under `cmd/taggity/`
   and `internal/taggity/` was ignored, including new tests. Already-tracked
@@ -82,6 +91,10 @@ compatibility promise and neither has earned one yet.
 - A rule that sets no match field, or more than one, is now rejected. Two
   fields would mean the engine answers one and ignores the other, giving the
   author a narrower question than they wrote.
+- A `code_any` list repeating a location is rejected. The repeat cannot change
+  a verdict, but it doubles the work and prints one answer twice. Two rules
+  against the same file and symbol are still allowed: one fix can add a guard
+  and remove a sink in the same function.
 - Evidence records carry the polarity of the rule that produced them, and
   `check` lists every location when a spec has more than one. The location that
   produced the verdict is marked with `*`.

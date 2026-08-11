@@ -245,6 +245,7 @@ func (s *Spec) Validate() error {
 		errs = append(errs, errors.New(
 			"signal sets both code and code_any; use one or the other"))
 	}
+	seen := make(map[string]int)
 	for i, loc := range s.Signal.Locations() {
 		field := "signal.code"
 		if len(s.Signal.CodeAny) > 0 {
@@ -259,6 +260,18 @@ func (s *Spec) Validate() error {
 			errs = append(errs, fmt.Errorf(
 				"%s.rule.indicates disagrees with the first location; every "+
 					"location in a code_any list must share one polarity", field))
+		}
+
+		// A repeated location asks one question twice. It cannot change a
+		// verdict, but it doubles the work and prints the same row twice, which
+		// reads as corroboration from two places that do not exist.
+		key := loc.File + "\x00" + loc.Symbol + "\x00" + loc.Rule.String()
+		if prev, ok := seen[key]; ok {
+			errs = append(errs, fmt.Errorf(
+				"%s repeats signal.code_any[%d]; every location must differ",
+				field, prev))
+		} else {
+			seen[key] = i
 		}
 	}
 	return errors.Join(errs...)

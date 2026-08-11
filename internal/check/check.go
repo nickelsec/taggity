@@ -5,6 +5,8 @@ package check
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/nickelsec/taggity/internal/git"
 	"github.com/nickelsec/taggity/internal/predicate"
@@ -163,6 +165,14 @@ func evaluate(src []byte, code spec.Code) predicate.Result {
 func detail(res predicate.Result, code spec.Code) string {
 	switch res.Reason {
 	case taggity.ReasonSymbolNotFound:
+		// A symbol goes missing for two very different reasons: the spec has a
+		// typo, or the code moved and this version genuinely lacks it. Naming
+		// the closest definitions in the file separates them at a glance, which
+		// is the difference between fixing a spec and investigating a version.
+		if near := nearest(code.Symbol, res.Candidates); len(near) > 0 {
+			return fmt.Sprintf("symbol %s not found; did you mean %s?",
+				code.Symbol, strings.Join(near, ", "))
+		}
 		return fmt.Sprintf("symbol %s not found", code.Symbol)
 	case taggity.ReasonAmbiguousSymbol:
 		return fmt.Sprintf("symbol %s is defined %d times; qualify it as Class.method",
@@ -177,6 +187,81 @@ func detail(res predicate.Result, code spec.Code) string {
 		}
 		return fmt.Sprintf("%s calls %s", code.Symbol, code.Rule.Calls)
 	}
+}
+
+// nearest picks the candidate names closest to want, so a not-found message can
+// suggest a correction instead of listing every definition in the file.
+//
+// Closeness is prefix and suffix overlap rather than an edit distance. The
+// names that matter here are long and structured: a typo shares a long prefix,
+// and a method renamed from _discover_protected_resource to
+// discover_protected_resource shares everything but the leading underscore.
+// Nothing is suggested when no name shares a meaningful run with want, because
+// a wrong guess sends the reader off to fix a spec that was already correct.
+func nearest(want string, candidates []string) []string {
+	const (
+		minOverlap  = 4
+		maxSuggest  = 3
+		strongMatch = 8
+	)
+
+	type scored struct {
+		name    string
+		overlap int
+	}
+
+	// Compare on the bare name: a spec says Class.method, the file may define
+	// the same method under a class that was renamed.
+	bare := want
+	if i := strings.LastIndex(want, "."); i >= 0 {
+		bare = want[i+1:]
+	}
+
+	var found []scored
+	for _, c := range candidates {
+		if c == want {
+			continue
+		}
+		n := max(commonPrefix(bare, c), commonSuffix(bare, c))
+		if n >= minOverlap {
+			found = append(found, scored{c, n})
+		}
+	}
+
+	sort.SliceStable(found, func(i, j int) bool {
+		return found[i].overlap > found[j].overlap
+	})
+
+	// A single strong match is a likely typo and worth naming alone. Several
+	// weak ones are a list of everything vaguely similar, which is noise.
+	if len(found) > 1 && found[0].overlap >= strongMatch && found[1].overlap < strongMatch {
+		found = found[:1]
+	}
+	if len(found) > maxSuggest {
+		found = found[:maxSuggest]
+	}
+
+	out := make([]string, 0, len(found))
+	for _, f := range found {
+		out = append(out, f.name)
+	}
+	return out
+}
+
+func commonPrefix(a, b string) int {
+	n := 0
+	for n < len(a) && n < len(b) && a[n] == b[n] {
+		n++
+	}
+	return n
+}
+
+func commonSuffix(a, b string) int {
+	n := 0
+	for n < len(a) && n < len(b) && a[len(a)-1-n] == b[len(b)-1-n] {
+		n++
+	}
+	return n
 }
 
 func unknown(r taggity.Reason, ev taggity.Evidence) taggity.Signals {
