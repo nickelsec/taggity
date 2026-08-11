@@ -21,6 +21,21 @@ compatibility promise and neither has earned one yet.
   any of them matches. A fix can span files: the sink in one module, the guard
   added in a validator in another. `signal.code` still takes a single location
   and existing specs are unchanged.
+- `signal.code.aliases` is evaluated. An alias pins an earlier name for the same
+  construct to a half-open version range, so a symbol that was renamed does not
+  read as absence. The spec's own symbol is tried first and an alias only
+  answers where it found nothing, so adding one cannot change a version that
+  already had an answer. A verdict reached through an alias records `alias` as
+  its evidence source and names the symbol that was actually read, because an
+  alias is a human claim that two names are the same construct and a reader has
+  to be able to see it.
+
+  Aliases cover a rename. They do nothing for a guard reimplemented in another
+  module under a different decomposition, which is the more common shape.
+- `authoring.mode` is validated, and `reviewed_by` is required when it is `ai`.
+  An alias with `source: llm` likewise requires `approved_by`. A model may
+  propose a name; only a human may stand behind one, and until now that rule
+  lived only in a doc comment.
 - `taggity init --defaults param=value`.
 - `unsupported_rule` reason, so a spec written for a newer build yields
   `UNKNOWN` rather than being evaluated as though its question had been

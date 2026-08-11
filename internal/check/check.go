@@ -78,7 +78,17 @@ func (c *Checker) Version(s *spec.Spec, version string) taggity.Signals {
 			continue
 		}
 
-		res := evaluate(src, loc)
+		res := evaluate(src, loc, version)
+
+		// Evidence names the symbol that was examined, not the one the spec
+		// asked for, and says so when they differ. A verdict reached through an
+		// alias rests on a human's claim that two names are the same construct,
+		// which a reader has to be able to see and disagree with.
+		symbol, source := loc.Symbol, "static"
+		if res.MatchedSymbol != "" && res.MatchedSymbol != loc.Symbol {
+			symbol, source = res.MatchedSymbol, "alias"
+		}
+
 		verdicts = append(verdicts, res.Verdict)
 		reasons = append(reasons, res.Reason)
 		evidence = append(evidence, taggity.Evidence{
@@ -87,13 +97,13 @@ func (c *Checker) Version(s *spec.Spec, version string) taggity.Signals {
 			Commit:         commit,
 			Tag:            tag,
 			File:           loc.File,
-			Symbol:         loc.Symbol,
+			Symbol:         symbol,
 			StartByte:      res.Definition.Start,
 			EndByte:        res.Definition.End,
 			Rule:           loc.Rule.String(),
 			Matcher:        predicate.MatcherName,
 			MatcherVersion: predicate.MatcherVersion,
-			Source:         "static",
+			Source:         source,
 			Detail:         detail(res, loc),
 		})
 	}
@@ -141,10 +151,11 @@ func combineAny(verdicts []taggity.Verdict, reasons []taggity.Reason) (taggity.V
 // A rule kind this build does not implement yields Unknown rather than falling
 // through to any verdict. Validate rejects such a spec before it reaches here,
 // so this is the second of two guards on the same failure.
-func evaluate(src []byte, code spec.Code) predicate.Result {
+func evaluate(src []byte, code spec.Code, version string) predicate.Result {
+	symbols := symbolsFor(code, version)
 	switch code.Rule.Kind() {
 	case "calls":
-		return predicate.Calls(src, code.Symbol, code.Rule.Calls)
+		return predicate.Calls(src, symbols, code.Rule.Calls)
 	case "defaults":
 		param, value, ok := code.Rule.Default()
 		if !ok {
@@ -153,13 +164,62 @@ func evaluate(src []byte, code spec.Code) predicate.Result {
 				Reason:  taggity.ReasonUnsupportedRule,
 			}
 		}
-		return predicate.Defaults(src, code.Symbol, param, value)
+		return predicate.Defaults(src, symbols, param, value)
 	default:
 		return predicate.Result{
 			Verdict: taggity.Unknown,
 			Reason:  taggity.ReasonUnsupportedRule,
 		}
 	}
+}
+
+// symbolsFor builds the ordered candidate names for one version: the spec's
+// symbol first, then any alias whose range covers it.
+//
+// Order matters and is not an optimisation. Trying the real name first means an
+// alias can only answer where the name found nothing, so adding one to a spec
+// cannot change a version that already had an answer.
+//
+// A range naming a version that does not parse covers nothing. Applying a
+// rename to releases it was never pinned to is how an alias stops being a fix
+// for a missing symbol and starts being a way to match unrelated code.
+func symbolsFor(code spec.Code, version string) []string {
+	symbols := []string{code.Symbol}
+	if len(code.Aliases) == 0 {
+		return symbols
+	}
+
+	v, ok := git.ParseVersion(version)
+	for _, a := range code.Aliases {
+		if a.Versions.Unbounded() {
+			symbols = append(symbols, a.Symbol)
+			continue
+		}
+		if !ok {
+			continue
+		}
+		if covers(a.Versions, v) {
+			symbols = append(symbols, a.Symbol)
+		}
+	}
+	return symbols
+}
+
+// covers reports whether v falls in the half-open range [Introduced, Until).
+func covers(r spec.Range, v git.Version) bool {
+	if r.Introduced != "" {
+		lo, ok := git.ParseVersion(r.Introduced)
+		if !ok || v.Compare(lo) < 0 {
+			return false
+		}
+	}
+	if r.Until != "" {
+		hi, ok := git.ParseVersion(r.Until)
+		if !ok || v.Compare(hi) >= 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func detail(res predicate.Result, code spec.Code) string {
@@ -182,10 +242,19 @@ func detail(res predicate.Result, code spec.Code) string {
 	case taggity.ReasonUnsupportedRule:
 		return "this build does not implement the rule kind the spec asks for"
 	default:
-		if param, value, ok := code.Rule.Default(); ok {
-			return fmt.Sprintf("%s declares %s=%s", code.Symbol, param, value)
+		// The name that resolved leads the line. When an alias answered it is
+		// not the spec's symbol, and reporting the spec's name would describe
+		// code that was never read at this version.
+		symbol := code.Symbol
+		via := ""
+		if res.MatchedSymbol != "" && res.MatchedSymbol != code.Symbol {
+			symbol = res.MatchedSymbol
+			via = fmt.Sprintf(" (alias for %s)", code.Symbol)
 		}
-		return fmt.Sprintf("%s calls %s", code.Symbol, code.Rule.Calls)
+		if param, value, ok := code.Rule.Default(); ok {
+			return fmt.Sprintf("%s declares %s=%s%s", symbol, param, value, via)
+		}
+		return fmt.Sprintf("%s calls %s%s", symbol, code.Rule.Calls, via)
 	}
 }
 
@@ -194,10 +263,10 @@ func detail(res predicate.Result, code spec.Code) string {
 //
 // Closeness is prefix and suffix overlap rather than an edit distance. The
 // names that matter here are long and structured: a typo shares a long prefix,
-// and a method renamed from _discover_protected_resource to
-// discover_protected_resource shares everything but the leading underscore.
-// Nothing is suggested when no name shares a meaningful run with want, because
-// a wrong guess sends the reader off to fix a spec that was already correct.
+// and a private method promoted to a module function shares everything but the
+// leading underscore. Nothing is suggested when no name shares a meaningful run
+// with want, because a wrong guess sends the reader off to fix a spec that was
+// already correct.
 func nearest(want string, candidates []string) []string {
 	const (
 		minOverlap  = 4

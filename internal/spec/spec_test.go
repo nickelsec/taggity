@@ -216,7 +216,8 @@ authoring:
 const withAliases = `      calls: eval
     aliases:
       - symbol: Alpha.parse_untrusted
-        versions: "<1.0.0"
+        versions:
+          until: "1.0.0"
         source: llm
         confidence: 0.8
         approved_by: nick`
@@ -239,24 +240,82 @@ func TestAliasSchemaStillParses(t *testing.T) {
 	}
 }
 
-// Nothing reads aliases in v0.1.0, so accepting one would discard a field the
-// author wrote specifically to prevent a symbol_not_found UNKNOWN, and then
-// report that UNKNOWN. Rejecting is the only option that does not silently
-// produce the outcome the alias existed to avoid.
-func TestValidateRejectsAliasesRatherThanIgnoringThem(t *testing.T) {
+// A spec with aliases now loads, since the engine evaluates them.
+func TestValidateAcceptsAliases(t *testing.T) {
 	src := strings.Replace(minimal, "      calls: eval", withAliases, 1)
+
+	s, err := spec.Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("a spec with aliases was rejected: %v", err)
+	}
+	if got := s.Signal.Code.Aliases[0].Versions.Until; got != "1.0.0" {
+		t.Errorf("alias range lost: %q", got)
+	}
+}
+
+// A model may propose a name; only a human may stand behind one. Without the
+// approval the provenance records who suggested the alias and nobody who
+// checked it, which is the distinction the authoring model rests on.
+func TestValidateRequiresApprovalForModelProposedAliases(t *testing.T) {
+	src := strings.Replace(minimal, "      calls: eval", `      calls: eval
+    aliases:
+      - symbol: old_name
+        source: llm
+        confidence: 0.9`, 1)
 
 	_, err := spec.Parse([]byte(src))
 	if err == nil {
-		t.Fatal("a spec with aliases loaded; the field is not evaluated, so " +
-			"accepting it would discard the author's input silently")
+		t.Fatal("an unapproved model-proposed alias was accepted")
 	}
-	if !strings.Contains(err.Error(), "aliases") {
-		t.Errorf("error must name the field, got: %v", err)
+	if !strings.Contains(err.Error(), "approved_by") {
+		t.Errorf("error must name the missing field, got: %v", err)
 	}
-	// The message has to say what to do instead, not just that it failed.
-	if !strings.Contains(err.Error(), "symbol") {
-		t.Errorf("error should point at qualifying the symbol, got: %v", err)
+}
+
+func TestValidateRejectsMalformedAliases(t *testing.T) {
+	cases := map[string]string{
+		"no symbol": `      calls: eval
+    aliases:
+      - versions:
+          until: "1.0.0"`,
+		"unknown source": `      calls: eval
+    aliases:
+      - symbol: old_name
+        source: telepathy`,
+	}
+	for name, block := range cases {
+		t.Run(name, func(t *testing.T) {
+			src := strings.Replace(minimal, "      calls: eval", block, 1)
+			if _, err := spec.Parse([]byte(src)); err == nil {
+				t.Error("accepted a malformed alias")
+			}
+		})
+	}
+}
+
+// The output of this tool is a public claim that a maintainer is wrong. A spec
+// a model drafted and nobody checked cannot carry that claim.
+func TestValidateAuthoringMode(t *testing.T) {
+	withMode := func(block string) string {
+		return strings.Replace(minimal, "signal:", block+"\nsignal:", 1)
+	}
+
+	if _, err := spec.Parse([]byte(withMode("authoring:\n  mode: ai"))); err == nil {
+		t.Error("mode: ai without reviewed_by was accepted")
+	} else if !strings.Contains(err.Error(), "reviewed_by") {
+		t.Errorf("error must name the missing field, got: %v", err)
+	}
+
+	if _, err := spec.Parse([]byte(withMode("authoring:\n  mode: banana"))); err == nil {
+		t.Error("an unknown authoring mode was accepted")
+	}
+
+	ok := withMode("authoring:\n  mode: ai\n  reviewed_by: nick")
+	if _, err := spec.Parse([]byte(ok)); err != nil {
+		t.Errorf("a reviewed ai-authored spec was rejected: %v", err)
+	}
+	if _, err := spec.Parse([]byte(withMode("authoring:\n  mode: manual"))); err != nil {
+		t.Errorf("mode: manual was rejected: %v", err)
 	}
 }
 

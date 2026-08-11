@@ -104,7 +104,7 @@ func TestCallsAgainstAdversarialConstructs(t *testing.T) {
 	for _, c := range cases {
 		name := c.symbol + "/" + c.target
 		t.Run(name, func(t *testing.T) {
-			got := predicate.Calls(src, c.symbol, c.target)
+			got := predicate.Calls(src, []string{c.symbol}, c.target)
 			if got.Verdict != c.want {
 				t.Errorf("verdict = %v, want %v (%s)", got.Verdict, c.want, c.why)
 			}
@@ -120,7 +120,7 @@ func TestCallsAgainstAdversarialConstructs(t *testing.T) {
 func TestUnknownOffersCandidates(t *testing.T) {
 	src := fixture(t)
 
-	res := predicate.Calls(src, "parse_untrusteds", "eval")
+	res := predicate.Calls(src, []string{"parse_untrusteds"}, "eval")
 	if res.Verdict != taggity.Unknown {
 		t.Fatalf("verdict = %v, want Unknown", res.Verdict)
 	}
@@ -128,7 +128,7 @@ func TestUnknownOffersCandidates(t *testing.T) {
 		t.Fatal("no candidates offered; an Unknown with no next step is not actionable")
 	}
 
-	res = predicate.Calls(src, "parse_untrusted", "eval")
+	res = predicate.Calls(src, []string{"parse_untrusted"}, "eval")
 	if res.Reason != taggity.ReasonAmbiguousSymbol {
 		t.Fatalf("reason = %q, want ambiguous_symbol", res.Reason)
 	}
@@ -143,7 +143,7 @@ func TestNeverPanicsOnMalformedSource(t *testing.T) {
 	for _, src := range []string{
 		"", "def broken(:\n", "\x00\x01\x02", "def f():\n\treturn eval(",
 	} {
-		res := predicate.Calls([]byte(src), "f", "eval")
+		res := predicate.Calls([]byte(src), []string{"f"}, "eval")
 		if res.Verdict == taggity.NotVulnerable {
 			t.Errorf("malformed source %q returned NotVulnerable; "+
 				"a parse failure is not evidence of safety", src)
@@ -288,7 +288,7 @@ func TestDefaults(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.symbol+"/"+c.param+"="+c.value, func(t *testing.T) {
-			got := predicate.Defaults(src, c.symbol, c.param, c.value)
+			got := predicate.Defaults(src, []string{c.symbol}, c.param, c.value)
 			if got.Verdict != c.want {
 				t.Errorf("verdict = %v, want %v: %s", got.Verdict, c.want, c.why)
 			}
@@ -302,7 +302,7 @@ func TestDefaults(t *testing.T) {
 // An unparseable file cannot answer anything, and must not read as a safe
 // default.
 func TestDefaultsOnBrokenSourceIsUnknown(t *testing.T) {
-	got := predicate.Defaults([]byte("def f(x=:\n"), "f", "x", "1")
+	got := predicate.Defaults([]byte("def f(x=:\n"), []string{"f"}, "x", "1")
 	if got.Verdict != taggity.Unknown {
 		t.Errorf("verdict = %v, want UNKNOWN", got.Verdict)
 	}

@@ -14,13 +14,13 @@ Answers one question about a released version: does it contain the vulnerable
 code?
 
 ```sh
-taggity check mcp@1.19.0 --spec ssrf.yaml
+taggity check pyyaml@3.13 --spec testdata/corpus/GHSA-rprw-h62v-c2w7-defaults.yaml
 ```
 
 ```
-  present    VULNERABLE      Client._discover calls httpx.Request
+  present    VULNERABLE      load declares Loader=Loader
   → VULNERABLE
-  at v1.19.0 (6c26d087df34) src/mcp/client/auth.py
+  at 3.13 (a2d481b8dbd2) lib/yaml/__init__.py
 ```
 
 The verdict comes with the tag, the commit and the file it was read from, so
@@ -89,10 +89,9 @@ taggity check redis@4.5.3 --spec spec.yaml
 ### When the code moves
 
 Symbols get renamed and files get split, so a spec naming one path stops
-matching for reasons that have nothing to do with the vulnerability. Going back
-through the tags of `modelcontextprotocol/python-sdk`, the OAuth discovery code
-lives in three different files: `auth.py` up to 1.19.0, `auth/oauth2.py` for
-1.20.x and 1.21.x, then `auth/utils.py` from 1.22.0 on.
+matching for reasons that have nothing to do with the vulnerability. A package
+that grew a `client/` package out of a single module can leave the same function
+in three different files across one version range.
 
 `code_any` takes several locations and the version counts as affected if any of
 them matches:
@@ -100,30 +99,55 @@ them matches:
 ```yaml
 signal:
   code_any:
-    - file: src/mcp/client/auth/utils.py
-      symbol: build_protected_resource_metadata_discovery_urls
-      rule: { calls: urls.append }
-    - file: src/mcp/client/auth/oauth2.py
-      symbol: OAuthClientProvider._discover_protected_resource
-      rule: { calls: httpx.Request }
-    - file: src/mcp/client/auth.py
-      symbol: OAuthClientProvider._discover_protected_resource
-      rule: { calls: httpx.Request }
+    - file: src/examplepkg/client/utils.py
+      symbol: build_request
+      rule: { calls: requests.get }
+    - file: src/examplepkg/client/base.py
+      symbol: Client._build_request
+      rule: { calls: requests.get }
+    - file: src/examplepkg/client.py
+      symbol: Client._build_request
+      rule: { calls: requests.get }
 ```
 
 Output names the location that answered, and marks it in the breakdown:
 
 ```
-  present    VULNERABLE      Client._discover calls httpx.Request
+  present    VULNERABLE      Client._build_request calls requests.get
 
-     UNKNOWN         src/mcp/client/auth/utils.py   not present at v1.19.0
-     UNKNOWN         src/mcp/client/auth/oauth2.py  not present at v1.19.0
-   * VULNERABLE      src/mcp/client/auth.py         Client._discover calls httpx.Request
+     UNKNOWN         src/examplepkg/client/utils.py  not present at v1.4.0
+     UNKNOWN         src/examplepkg/client/base.py   not present at v1.4.0
+   * VULNERABLE      src/examplepkg/client.py        Client._build_request calls requests.get
 ```
 
 If no location matches and one of them could not be read, the result is
 `UNKNOWN`, not `NOT_VULNERABLE`. A location that was never examined is not a
 location found clean.
+
+When the symbol itself was renamed rather than moved, pin the old name to the
+versions that carried it. A method promoted to a module function is the common
+case:
+
+```yaml
+      symbol: build_request
+      aliases:
+        - symbol: Client._build_request
+          versions:
+            until: "2.0.0"
+          source: human
+```
+
+The spec's own symbol is tried first, so an alias only answers where the real
+name found nothing and adding one cannot change a version that already had an
+answer. A verdict reached through an alias says so:
+
+```
+  * VULNERABLE  src/examplepkg/client.py  Client._build_request calls requests.get
+                (alias for build_request)
+```
+
+An alias is a human claim that two names are the same construct, so the output
+names the symbol that was actually read and leaves that claim visible.
 
 ## Auditing an advisory's range
 
@@ -208,9 +232,10 @@ looking entirely correct.
   untagged hotfixes are invisible.
 - Does not resolve aliased imports. `from pickle import loads; loads(x)` will
   not match `calls: pickle.loads`.
-- `signal.code.aliases` is reserved. It parses, so specs written now will not
-  need migrating, but nothing evaluates it and a spec that sets it is rejected
-  rather than silently ignored.
+- Aliases cover a renamed symbol, not a reimplemented one. Pinning the old name
+  works when a fix renamed a function; it does nothing when the protection moved
+  to a different module with a different decomposition, which is the more common
+  shape and still reads as absence.
 - No execution and no reachability analysis. Code being present is not the same
   as it being exploitable.
 - `check` exits 0 even when the verdict is `VULNERABLE`. The exit status says

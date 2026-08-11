@@ -79,6 +79,10 @@ type Result struct {
 	// Candidates lists nearby symbol names when the target was not found or
 	// was ambiguous, so an Unknown tells the researcher what to do next.
 	Candidates []string
+	// MatchedSymbol is the name that resolved. It differs from the spec's
+	// symbol when an alias answered, and a verdict reached that way has to say
+	// so: the code examined was not the code the spec named.
+	MatchedSymbol string
 }
 
 // scope is a parsed file narrowed to the single definition a spec named.
@@ -87,16 +91,27 @@ type scope struct {
 	tree *ts.Tree
 	defs []Definition
 	want Definition
+	// matched is the name that resolved, which is not the spec's symbol when an
+	// alias answered.
+	matched string
 }
 
 // resolve parses src and locates the one definition the spec asked about.
 //
+// symbols is tried in order and the first name that resolves wins. The spec's
+// own symbol comes first, so an alias can only answer where the real name found
+// nothing: adding one cannot change a version that already had an answer.
+//
 // It returns a Result instead of a scope whenever the question cannot be
 // answered, so every rule kind shares the same failure vocabulary and none of
 // them can accidentally treat a resolution failure as evidence of absence.
-func resolve(src []byte, symbol string) (scope, *Result) {
+func resolve(src []byte, symbols []string) (scope, *Result) {
 	unknown := func(r taggity.Reason, candidates []string) *Result {
 		return &Result{Verdict: taggity.Unknown, Reason: r, Candidates: candidates}
+	}
+
+	if len(symbols) == 0 {
+		return scope{}, unknown(taggity.ReasonSymbolNotFound, nil)
 	}
 
 	lang := grammars.PythonLanguage()
@@ -112,23 +127,35 @@ func resolve(src []byte, symbol string) (scope, *Result) {
 		return scope{}, unknown(taggity.ReasonParseFailed, nil)
 	}
 
-	var matched []Definition
-	for _, d := range defs {
-		if d.matches(symbol) {
-			matched = append(matched, d)
+	for _, symbol := range symbols {
+		var matched []Definition
+		for _, d := range defs {
+			if d.matches(symbol) {
+				matched = append(matched, d)
+			}
+		}
+
+		switch len(matched) {
+		case 0:
+			continue
+		case 1:
+			return scope{
+				lang:    lang,
+				tree:    tree,
+				defs:    defs,
+				want:    matched[0],
+				matched: symbol,
+			}, nil
+		default:
+			// Ambiguity stops the search rather than falling through to an
+			// alias. Two definitions of the requested name is a question the
+			// spec has to answer by qualifying it; resolving a different name
+			// instead would answer something nobody asked.
+			return scope{}, unknown(taggity.ReasonAmbiguousSymbol, qualifiedNames(matched))
 		}
 	}
 
-	switch len(matched) {
-	case 0:
-		return scope{}, unknown(taggity.ReasonSymbolNotFound, names(defs))
-	case 1:
-		return scope{lang: lang, tree: tree, defs: defs, want: matched[0]}, nil
-	default:
-		// Answering for either definition would answer a question the spec did
-		// not ask. The spec must qualify the symbol as Class.method.
-		return scope{}, unknown(taggity.ReasonAmbiguousSymbol, qualifiedNames(matched))
-	}
+	return scope{}, unknown(taggity.ReasonSymbolNotFound, names(defs))
 }
 
 // owns reports whether pos belongs to the resolved definition rather than to a
@@ -146,12 +173,11 @@ func (s scope) owns(pos uint32) bool {
 // NotVulnerable requires the symbol to have been found and no qualifying call
 // to exist inside it. Every other outcome is Unknown with a reason, because a
 // failure to answer is not evidence of safety.
-func Calls(src []byte, symbol, target string) Result {
-	sc, bad := resolve(src, symbol)
+func Calls(src []byte, symbols []string, target string) Result {
+	sc, bad := resolve(src, symbols)
 	if bad != nil {
 		return *bad
 	}
-	want := sc.want
 
 	qc, err := ts.NewQuery(qCalls, sc.lang)
 	if err != nil {
@@ -167,12 +193,12 @@ func Calls(src []byte, symbol, target string) Result {
 			// A call inside a nested definition belongs to that definition, not
 			// to this one. The innermost enclosing definition owns it.
 			if sc.owns(c.Node.StartByte()) {
-				return Result{Verdict: taggity.Vulnerable, Definition: want}
+				return present(true, sc)
 			}
 		}
 	}
 
-	return present(false, want)
+	return present(false, sc)
 }
 
 // Defaults reports whether symbol declares parameter with the given default
@@ -186,12 +212,11 @@ func Calls(src []byte, symbol, target string) Result {
 // A parameter with no default never matches. Once PyYAML made Loader a required
 // argument the vulnerable default was gone, and reporting that as a match would
 // be wrong in the direction that matters.
-func Defaults(src []byte, symbol, param, value string) Result {
-	sc, bad := resolve(src, symbol)
+func Defaults(src []byte, symbols []string, param, value string) Result {
+	sc, bad := resolve(src, symbols)
 	if bad != nil {
 		return *bad
 	}
-	want := sc.want
 
 	qd, err := ts.NewQuery(qDefaults, sc.lang)
 	if err != nil {
@@ -216,11 +241,11 @@ func Defaults(src []byte, symbol, param, value string) Result {
 		// Defaults belong to the definition that declares them, so a nested
 		// function's parameters never answer for its parent.
 		if sc.owns(pos) {
-			return Result{Verdict: taggity.Vulnerable, Definition: want}
+			return present(true, sc)
 		}
 	}
 
-	return present(false, want)
+	return present(false, sc)
 }
 
 // present converts a completed structural search into a verdict.
@@ -228,11 +253,19 @@ func Defaults(src []byte, symbol, param, value string) Result {
 // Every rule kind routes its final answer through here. That keeps the sole
 // assignment of NotVulnerable in one place, which is the invariant
 // internal/taggity/invariant_test.go enforces; see internal/taggity/doc.go.
-func present(found bool, want Definition) Result {
+func present(found bool, sc scope) Result {
 	if found {
-		return Result{Verdict: taggity.Vulnerable, Definition: want}
+		return Result{
+			Verdict:       taggity.Vulnerable,
+			Definition:    sc.want,
+			MatchedSymbol: sc.matched,
+		}
 	}
-	return Result{Verdict: taggity.NotVulnerable, Definition: want}
+	return Result{
+		Verdict:       taggity.NotVulnerable,
+		Definition:    sc.want,
+		MatchedSymbol: sc.matched,
+	}
 }
 
 // definitions collects every function and method definition with its span.

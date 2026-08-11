@@ -369,11 +369,13 @@ func TestVersionSingleLocationIsUnchanged(t *testing.T) {
 // lacks the code. The message has to separate those: the first is fixed by
 // editing one line, the second is a real finding about the version.
 func TestSymbolNotFoundSuggestsACorrection(t *testing.T) {
+	// Long structured names are the realistic case and the one the prefix and
+	// suffix matching is tuned for.
 	const file = `
-def build_protected_resource_metadata_discovery_urls(www_auth, server):
+def build_resource_descriptor_cache_keys(config, registry):
     return []
 
-def extract_scope_from_www_auth(response):
+def read_configuration_defaults(path):
     return None
 `
 	cases := []struct {
@@ -384,12 +386,12 @@ def extract_scope_from_www_auth(response):
 	}{
 		{
 			name:   "a trailing typo names the real symbol",
-			symbol: "build_protected_resource_metadata_discovery_url",
-			want:   "did you mean build_protected_resource_metadata_discovery_urls",
+			symbol: "build_resource_descriptor_cache_key",
+			want:   "did you mean build_resource_descriptor_cache_keys",
 		},
 		{
 			name:    "an unrelated symbol gets no guess",
-			symbol:  "OAuthClientProvider._discover_protected_resource",
+			symbol:  "RegistryClient._fetch_manifest",
 			notWant: "did you mean",
 		},
 	}
@@ -411,5 +413,143 @@ def extract_scope_from_www_auth(response):
 					"the reader to fix a spec that was already correct", got)
 			}
 		})
+	}
+}
+
+// aliasSpec names a symbol with one alias pinned to versions below until.
+func aliasSpec(symbol, alias, until string) *spec.Spec {
+	s := testSpec("a.py", symbol)
+	s.Signal.Code.Aliases = []spec.Alias{{
+		Symbol:   alias,
+		Versions: spec.Range{Until: until},
+		Source:   spec.SourceHuman,
+	}}
+	return s
+}
+
+// The case aliases exist for: a guard renamed at some release, where the old
+// name has to answer for versions below it.
+func TestAliasResolvesARenamedSymbol(t *testing.T) {
+	const old = `
+def _validate_ks_template_path(path):
+    return eval(path)
+`
+	const renamed = `
+def _validate_autoinstall_template_path(path):
+    return eval(path)
+`
+	s := aliasSpec("_validate_autoinstall_template_path",
+		"_validate_ks_template_path", "3.3.7")
+
+	// Below the rename the alias answers.
+	src := &fakeSource{commit: "abc", tag: "v2.1.0", src: old}
+	sig := (&check.Checker{Source: src}).Version(s, "2.1.0")
+	if sig.Overall() != taggity.Vulnerable {
+		t.Fatalf("verdict = %v, want VULNERABLE via the alias", sig.Overall())
+	}
+
+	// A verdict reached through an alias has to be visibly different from one
+	// reached directly, or the provenance overstates what was checked.
+	ev := sig.Deciding()
+	if ev.Source != "alias" {
+		t.Errorf("Source = %q, want \"alias\"", ev.Source)
+	}
+	if ev.Symbol != "_validate_ks_template_path" {
+		t.Errorf("Symbol = %q, want the name that actually resolved", ev.Symbol)
+	}
+	if !strings.Contains(ev.Detail, "alias for") {
+		t.Errorf("detail = %q, want it to say an alias answered", ev.Detail)
+	}
+
+	// At and above the rename the real name answers and nothing says alias.
+	src = &fakeSource{commit: "def", tag: "v3.3.7", src: renamed}
+	sig = (&check.Checker{Source: src}).Version(s, "3.3.7")
+	if sig.Overall() != taggity.Vulnerable {
+		t.Fatalf("verdict = %v, want VULNERABLE via the real name", sig.Overall())
+	}
+	if ev := sig.Deciding(); ev.Source != "static" {
+		t.Errorf("Source = %q, want \"static\": the spec's own symbol resolved", ev.Source)
+	}
+}
+
+// An alias out of range must not answer. Applying a rename to releases it was
+// never pinned to is how an alias stops fixing a missing symbol and starts
+// matching unrelated code.
+func TestAliasOutsideItsRangeIsNotUsed(t *testing.T) {
+	const old = `
+def old_name(data):
+    return eval(data)
+`
+	s := aliasSpec("new_name", "old_name", "2.0.0")
+	src := &fakeSource{commit: "abc", tag: "v3.0.0", src: old}
+
+	sig := (&check.Checker{Source: src}).Version(s, "3.0.0")
+	if sig.Overall() != taggity.Unknown {
+		t.Errorf("verdict = %v, want UNKNOWN: the alias does not cover 3.0.0 "+
+			"and the real name is absent", sig.Overall())
+	}
+	if sig.Overall() == taggity.NotVulnerable {
+		t.Error("an out-of-range alias must never produce NOT_VULNERABLE")
+	}
+}
+
+// An alias that resolves nothing leaves the answer UNKNOWN. Adding a name that
+// is not there cannot turn a gap into evidence of safety.
+func TestAliasThatResolvesNothingStaysUnknown(t *testing.T) {
+	const unrelated = `
+def something_else(data):
+    return data
+`
+	s := aliasSpec("new_name", "old_name", "9.0.0")
+	src := &fakeSource{commit: "abc", tag: "v1.0.0", src: unrelated}
+
+	sig := (&check.Checker{Source: src}).Version(s, "1.0.0")
+	if sig.Overall() != taggity.Unknown {
+		t.Errorf("verdict = %v, want UNKNOWN", sig.Overall())
+	}
+	if sig.Reason != taggity.ReasonSymbolNotFound {
+		t.Errorf("reason = %q, want symbol_not_found", sig.Reason)
+	}
+}
+
+// The spec's own symbol is tried first, so adding an alias cannot change a
+// version that already had an answer. Both names exist here and the real one
+// must win.
+func TestSpecSymbolWinsOverAnAlias(t *testing.T) {
+	const both = `
+def old_name(data):
+    return eval(data)
+
+def new_name(data):
+    return json.loads(data)
+`
+	s := aliasSpec("new_name", "old_name", "9.0.0")
+	src := &fakeSource{commit: "abc", tag: "v1.0.0", src: both}
+
+	sig := (&check.Checker{Source: src}).Version(s, "1.0.0")
+	if sig.Overall() != taggity.NotVulnerable {
+		t.Fatalf("verdict = %v, want NOT_VULNERABLE: new_name resolved and does "+
+			"not call eval, so the alias must never have been consulted",
+			sig.Overall())
+	}
+	if ev := sig.Deciding(); ev.Source != "static" {
+		t.Errorf("Source = %q, want \"static\"", ev.Source)
+	}
+}
+
+// A version that does not parse cannot be placed in any range, so a bounded
+// alias must not apply to it.
+func TestAliasIsNotUsedForAnUnparseableVersion(t *testing.T) {
+	const old = `
+def old_name(data):
+    return eval(data)
+`
+	s := aliasSpec("new_name", "old_name", "2.0.0")
+	src := &fakeSource{commit: "abc", tag: "nightly", src: old}
+
+	sig := (&check.Checker{Source: src}).Version(s, "nightly")
+	if sig.Overall() == taggity.Vulnerable {
+		t.Error("a bounded alias answered for a version that cannot be placed " +
+			"in its range")
 	}
 }

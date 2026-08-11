@@ -41,6 +41,33 @@ type Authoring struct {
 	ReviewedBy string `yaml:"reviewed_by,omitempty"`
 }
 
+// Mode values for Authoring.Mode.
+const (
+	ModeManual = "manual"
+	ModeAI     = "ai"
+)
+
+// validate reports every problem with the authoring block.
+func (a Authoring) validate() []error {
+	var errs []error
+	switch a.Mode {
+	case "", ModeManual:
+	case ModeAI:
+		// The output of this tool is a public claim that a maintainer is wrong.
+		// Recording which model drafted a spec and nobody who checked it would
+		// put that claim's provenance at "a model said so".
+		if a.ReviewedBy == "" {
+			errs = append(errs, fmt.Errorf(
+				"authoring.reviewed_by is required when mode is %q: a spec no "+
+					"human approved is not one to act on", ModeAI))
+		}
+	default:
+		errs = append(errs, fmt.Errorf("authoring.mode is %q, must be %q or %q",
+			a.Mode, ModeManual, ModeAI))
+	}
+	return errs
+}
+
 // Signal groups the evidence sources. Only code is implemented; the others are
 // declared so their absence reads as "not evaluated" rather than "not
 // applicable".
@@ -81,15 +108,12 @@ type Code struct {
 	Rule Rule `yaml:"rule"`
 
 	// Aliases give earlier names for the same construct, so a rename does not
-	// read as absence. Each is pinned by a human and evaluated
-	// deterministically thereafter.
+	// read as absence. Each is pinned to a version range by a human and
+	// evaluated deterministically thereafter: the name decides the verdict, not
+	// whatever proposed it.
 	//
-	// The field is in the schema from the first release so a spec written today
-	// needs no migration when model-assisted authoring arrives. NOTHING
-	// EVALUATES IT IN v0.1.0, and Validate rejects a non-empty list rather than
-	// accepting input the engine would discard: an alias exists precisely to
-	// prevent a symbol_not_found UNKNOWN, so ignoring one silently produces the
-	// outcome its author wrote it to avoid.
+	// Symbol is tried first and aliases only when it does not resolve, so adding
+	// one cannot change a version that already answered.
 	Aliases []Alias `yaml:"aliases,omitempty"`
 }
 
@@ -197,13 +221,69 @@ func (r Rule) Default() (param, value string, ok bool) {
 
 // Alias is a previous name for the symbol, restricted to a version range.
 type Alias struct {
-	Symbol   string `yaml:"symbol"`
-	Versions string `yaml:"versions,omitempty"`
+	Symbol string `yaml:"symbol"`
+
+	// Versions bounds where the name applies, half-open as everywhere else:
+	// introduced is inclusive, until is exclusive. Both are optional, and an
+	// empty range means the alias applies to every version.
+	//
+	// The bound is a claim about which releases carried the old name, so it is
+	// worth stating even when it seems redundant. An unbounded alias will
+	// happily match a same-named function in an unrelated era.
+	Versions Range `yaml:"versions,omitempty"`
+
 	// Source is "human" or "llm"; Confidence and Model apply to the latter.
 	Source     string  `yaml:"source,omitempty"`
 	Confidence float64 `yaml:"confidence,omitempty"`
 	Model      string  `yaml:"model,omitempty"`
 	ApprovedBy string  `yaml:"approved_by,omitempty"`
+}
+
+// Source values for Alias.Source.
+const (
+	SourceHuman = "human"
+	SourceLLM   = "llm"
+)
+
+// Range is a half-open version range: Introduced <= v < Until.
+type Range struct {
+	Introduced string `yaml:"introduced,omitempty"`
+	Until      string `yaml:"until,omitempty"`
+}
+
+// Unbounded reports whether the range covers every version.
+func (r Range) Unbounded() bool {
+	return r.Introduced == "" && r.Until == ""
+}
+
+// validate reports every problem with one alias. field names it for the error.
+//
+// Version strings are checked for syntax by the caller, which owns the version
+// comparator. This package stays a leaf: it parses and validates the document,
+// and knows nothing about repositories.
+func (a Alias) validate(field string) []error {
+	var errs []error
+	if a.Symbol == "" {
+		errs = append(errs, fmt.Errorf("%s.symbol is required", field))
+	}
+
+	switch a.Source {
+	case "", SourceHuman:
+	case SourceLLM:
+		// A model may propose a name; only a human may stand behind one. Without
+		// this the provenance fields record who suggested the alias and nobody
+		// who checked it, which is the distinction the whole authoring model
+		// rests on.
+		if a.ApprovedBy == "" {
+			errs = append(errs, fmt.Errorf(
+				"%s.approved_by is required when source is %q: a model-proposed "+
+					"alias nobody approved is not evidence", field, SourceLLM))
+		}
+	default:
+		errs = append(errs, fmt.Errorf("%s.source is %q, must be %q or %q",
+			field, a.Source, SourceHuman, SourceLLM))
+	}
+	return errs
 }
 
 // Load reads and validates a spec file.
@@ -245,6 +325,7 @@ func (s *Spec) Validate() error {
 		errs = append(errs, errors.New(
 			"signal sets both code and code_any; use one or the other"))
 	}
+	errs = append(errs, s.Authoring.validate()...)
 	seen := make(map[string]int)
 	for i, loc := range s.Signal.Locations() {
 		field := "signal.code"
@@ -300,14 +381,8 @@ func (c Code) validate(field string) []error {
 			"%s.rule.indicates is %q, must be %q or %q",
 			field, c.Rule.Indicates, IndicatesVulnerable, IndicatesFixed))
 	}
-	// Reserved, not implemented. Accepting this would discard a field the author
-	// wrote specifically to prevent an UNKNOWN, and report that UNKNOWN anyway.
-	if len(c.Aliases) > 0 {
-		errs = append(errs, fmt.Errorf(
-			"%s.aliases is not evaluated in v0.1.0: the field is reserved for "+
-				"model-assisted authoring. Remove it, or qualify the symbol as "+
-				"Class.method instead. A spec whose aliases are ignored would "+
-				"report UNKNOWN [symbol_not_found] rather than matching", field))
+	for i, a := range c.Aliases {
+		errs = append(errs, a.validate(fmt.Sprintf("%s.aliases[%d]", field, i))...)
 	}
 	return errs
 }
