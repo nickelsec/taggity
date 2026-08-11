@@ -8,6 +8,8 @@ compatibility promise and neither has earned one yet.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-11
+
 ### Fixed
 
 - An advisory claim with no released version at either edge was probed by
@@ -230,6 +232,7 @@ Binaries for Linux, macOS and Windows on amd64 and arm64, with SHA-256 checksums
 and an SPDX SBOM per archive. Built with `CGO_ENABLED=0` and `-trimpath`,
 timestamped from the commit.
 
-[Unreleased]: https://github.com/nickelsec/taggity/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/nickelsec/taggity/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/nickelsec/taggity/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/nickelsec/taggity/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nickelsec/taggity/releases/tag/v0.1.0
