@@ -133,9 +133,19 @@ func TestNotVulnerableAssignedOnce(t *testing.T) {
 	// assignment in predicate.Calls, reached only when the symbol was found and
 	// no qualifying call exists inside it.
 	//
+	// The sixth is Verdict.Affected, and it concludes nothing. It re-reads a
+	// verdict the engine already reached, under a polarity the spec's author
+	// declared, and is the identity whenever a rule matches the danger. It can
+	// only produce NotVulnerable from an engine Vulnerable — the construct was
+	// found, and a human wrote `indicates: fixed` to say that finding it means
+	// the version is patched. Unknown and Unevaluated pass through untouched, so
+	// no unanswered question becomes a negative here. Added in 0.3.0, when
+	// `check` was printing NOT_VULNERABLE as the headline for genuinely
+	// vulnerable versions on every guard-shaped spec.
+	//
 	// Raising this number means a second code path can now conclude that a
 	// version is unaffected. Do that only with a reason recorded here.
-	const allowed = 5
+	const allowed = 6
 
 	if len(sites) > allowed {
 		t.Errorf("NotVulnerable referenced %d times, expected at most %d.\n"+

@@ -164,7 +164,12 @@ func splitTarget(arg string) (pkg, version string, err error) {
 func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals,
 	quiet, verbose bool, gap *resolved,
 ) {
-	overall := sig.Overall()
+	// The question asked was "is this version vulnerable", so that is what the
+	// verdict answers. Under `indicates: fixed` the rule matches the guard, and
+	// the raw verdict answers "did the construct appear" instead — the opposite
+	// word on 7 of the 16 corpus specs. The evidence line below still reports
+	// what was literally found, so the reading stays checkable.
+	overall := sig.Overall().Affected(sp.MatchMeansVulnerable())
 	if quiet {
 		fmt.Fprintln(w, overall)
 		return
@@ -184,7 +189,7 @@ func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals,
 	// em dash beside a word they have to look up is worse than silence. A
 	// signal that never ran still must never look like a pass, which is what
 	// the em dash is for.
-	fmt.Fprintf(w, "\n  found        %-15s %s\n", sig.Present, ev.Detail)
+	fmt.Fprintf(w, "\n  found        %-15s %s\n", presence(sig.Present), ev.Detail)
 	if verbose {
 		fmt.Fprintf(w, "  reachable    %-15s not evaluated\n", sig.Reachable)
 		fmt.Fprintf(w, "  triggers     %-15s not evaluated\n", sig.Triggers)
@@ -202,7 +207,7 @@ func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals,
 			if i == deciding {
 				mark = "* "
 			}
-			fmt.Fprintf(w, "  %s%-15s %s  %s\n", mark, e.Verdict, e.File, e.Detail)
+			fmt.Fprintf(w, "  %s%-15s %s  %s\n", mark, presence(e.Verdict), e.File, e.Detail)
 		}
 	}
 
@@ -225,11 +230,36 @@ func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals,
 	if ev.Commit != "" {
 		fmt.Fprintf(w, "  read %s at %s (%s)\n", ev.File, ev.Tag, short(ev.Commit))
 	}
+	// Naming the reading keeps the verdict reproducible: "found" reports what is
+	// in the file, the verdict reports what that means, and a reader who knows
+	// the rule matches the fix can check one against the other.
 	if !sp.MatchMeansVulnerable() {
-		fmt.Fprintln(w, "\n  This spec matches the FIX rather than the danger, so"+
-			"\n  VULNERABLE here means the version is patched.")
+		fmt.Fprintln(w, "\n  This spec matches the FIX, so finding it means"+
+			"\n  the version is patched. The verdict above is already"+
+			"\n  read that way.")
 	}
 	fmt.Fprintln(w)
+}
+
+// presence renders an evidence verdict as the answer to "was the construct
+// there", which is the question that row reports on.
+//
+// The evidence verdict is the engine's raw finding: Vulnerable means the
+// construct was found. Printing that word beside "main does not call X" puts a
+// verdict against a presence question and reads as a contradiction under
+// `indicates: fixed`, where the two genuinely point opposite ways. The verdict
+// for the version is the arrow line, and it is the only place that word belongs.
+func presence(v taggity.Verdict) string {
+	switch v {
+	case taggity.Vulnerable:
+		return "yes"
+	case taggity.NotVulnerable:
+		return "no"
+	case taggity.Unknown:
+		return "UNKNOWN"
+	default:
+		return "—"
+	}
 }
 
 // ruleLine describes the rule that produced the verdict.

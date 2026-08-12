@@ -251,8 +251,20 @@ func detail(res predicate.Result, code spec.Code) string {
 			symbol = res.MatchedSymbol
 			via = fmt.Sprintf(" (alias for %s)", code.Symbol)
 		}
+		// The line has to state what was found, not what was asked. res.Verdict
+		// is the engine's finding about the construct and carries no polarity:
+		// Vulnerable here means present. Without the negation an absence reads
+		// as "main calls _validate_untrusted_args" beside a verdict saying it
+		// does not, and the two halves of one line contradict each other.
+		found := res.Verdict == taggity.Vulnerable
 		if param, value, ok := code.Rule.Default(); ok {
+			if !found {
+				return fmt.Sprintf("%s does not declare %s=%s%s", symbol, param, value, via)
+			}
 			return fmt.Sprintf("%s declares %s=%s%s", symbol, param, value, via)
+		}
+		if !found {
+			return fmt.Sprintf("%s does not call %s%s", symbol, code.Rule.Calls, via)
 		}
 		return fmt.Sprintf("%s calls %s%s", symbol, code.Rule.Calls, via)
 	}

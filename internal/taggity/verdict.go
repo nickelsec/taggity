@@ -45,6 +45,32 @@ func (v Verdict) String() string {
 	}
 }
 
+// Affected reads a verdict as the answer to "is this version vulnerable",
+// which is not the same question the rule asked.
+//
+// A rule matches either the danger or the guard. Under `indicates: fixed` the
+// rule matches the fix, so Vulnerable — the construct is present — means the
+// version is patched. The raw verdict is the engine's finding about the code
+// and stays that way in evidence, exports and audit classification. This is the
+// reading a person asked for when they named a version.
+//
+// Unknown and Unevaluated pass through untouched. Inverting an unanswered
+// question would turn "the file was not there" into a claim about safety, which
+// is the one direction this project must never move in.
+func (v Verdict) Affected(matchMeansVulnerable bool) Verdict {
+	if matchMeansVulnerable {
+		return v
+	}
+	switch v {
+	case Vulnerable:
+		return NotVulnerable
+	case NotVulnerable:
+		return Vulnerable
+	default:
+		return v
+	}
+}
+
 // Reason explains why a Verdict is Unknown. Reasons are machine-readable so
 // that the distribution of Unknowns across a corpus can be measured: a corpus
 // dominated by NoTag needs artifact inspection, whereas one dominated by
