@@ -5,9 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/nickelsec/taggity/internal/check"
+	"github.com/nickelsec/taggity/internal/git"
+	"github.com/nickelsec/taggity/internal/llm"
 	"github.com/nickelsec/taggity/internal/spec"
 	"github.com/nickelsec/taggity/internal/taggity"
 )
@@ -18,6 +21,7 @@ func runCheck(args []string, stdout, stderr io.Writer) error {
 	specPath := fs.String("spec", "", "path to a taggity.yaml spec (required)")
 	quiet := fs.Bool("quiet", false, "print only the verdict")
 	verbose := fs.Bool("verbose", false, "also print the machine-readable reason codes")
+	useLLM := fs.Bool("llm", false, "if the answer is UNKNOWN, look for the code elsewhere")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, `
 Usage: taggity check <pkg>@<version> --spec <file>
@@ -69,18 +73,49 @@ Flags:
 	// The repository is a precondition rather than a best-effort input: without
 	// it there is no way to answer anything, so fail here instead of emitting a
 	// run of UNKNOWNs that look like results.
-	c, err := check.New(sp.Repo)
+	repo, err := git.OpenOrClone(sp.Repo)
 	if err != nil {
-		return err
+		return fmt.Errorf("repository is required: %w", err)
 	}
 
-	sig := c.Version(sp, wantVersion)
-	printCheck(stdout, sp, wantVersion, sig, *quiet, *verbose)
+	sig := (&check.Checker{Source: repo}).Version(sp, wantVersion)
+
+	// Only when the engine could not answer. A verdict it reached is never
+	// revisited: a model has nothing to add to a parse that succeeded, and
+	// asking would put one on the path to a verdict.
+	var gap *resolved
+	if *useLLM && sig.Overall() == taggity.Unknown {
+		gap, err = explainOne(sp, repo, *specPath, wantVersion, sig.Reason)
+		if err != nil {
+			return err
+		}
+	}
+
+	printCheck(stdout, sp, wantVersion, sig, *quiet, *verbose, gap)
 
 	// Exit status reports whether the run succeeded, not what the verdict was.
 	// A tool that exits non-zero on VULNERABLE would be unusable in a loop over
 	// versions, where finding the construct is the expected outcome.
 	return nil
+}
+
+// explainOne asks the model why one version could not be answered, and
+// re-checks anywhere it points at.
+func explainOne(sp *spec.Spec, repo *git.Repo, specPath, version string,
+	reason taggity.Reason,
+) (*resolved, error) {
+	provider, err := llm.FromConfig("", "")
+	if err != nil {
+		return nil, err
+	}
+	// #nosec G304 -- the spec the user asked to check, already read once above.
+	raw, err := os.ReadFile(specPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading spec: %w", err)
+	}
+
+	r := &resolver{provider: provider, repo: repo, spec: sp, specYAML: string(raw)}
+	return r.resolve(version, reason), nil
 }
 
 // extractPositional pulls the first bare argument out of args, returning it
@@ -126,7 +161,9 @@ func splitTarget(arg string) (pkg, version string, err error) {
 	return "", arg, nil
 }
 
-func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals, quiet, verbose bool) {
+func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals,
+	quiet, verbose bool, gap *resolved,
+) {
 	overall := sig.Overall()
 	if quiet {
 		fmt.Fprintln(w, overall)
@@ -177,6 +214,13 @@ func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals,
 		}
 	}
 	fmt.Fprintln(w)
+
+	// With --llm, the explanation lands under the verdict it explains. The
+	// verdict above is the engine's: a re-check the model pointed at appears as
+	// its own line rather than replacing this one.
+	if gap != nil {
+		fmt.Fprint(w, gap.describe("  "))
+	}
 
 	if ev.Commit != "" {
 		fmt.Fprintf(w, "  read %s at %s (%s)\n", ev.File, ev.Tag, short(ev.Commit))

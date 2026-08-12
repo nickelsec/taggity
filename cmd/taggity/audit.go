@@ -5,11 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/nickelsec/taggity/internal/audit"
 	"github.com/nickelsec/taggity/internal/check"
 	"github.com/nickelsec/taggity/internal/git"
+	"github.com/nickelsec/taggity/internal/llm"
 	"github.com/nickelsec/taggity/internal/spec"
 )
 
@@ -19,6 +21,7 @@ func runAudit(args []string, stdout, stderr io.Writer) error {
 	specPath := fs.String("spec", "", "path to a taggity.yaml spec (required)")
 	advPath := fs.String("advisory", "", "path to an OSV JSON advisory (required)")
 	verbose := fs.Bool("verbose", false, "show every probed version, not just findings")
+	useLLM := fs.Bool("llm", false, "explain the versions that could not be checked")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, `
 Usage: taggity audit --spec <file> --advisory <file>
@@ -81,11 +84,59 @@ Flags:
 	}
 
 	rep := audit.Run(&check.Checker{Source: repo}, sp, adv, boundaries)
-	printAudit(stdout, rep, sp, len(tags), *verbose)
+
+	// One call per grouped gap, not per version: gaps are already grouped by
+	// cause, so six consecutive releases that share one share a single call.
+	var gaps map[string]*resolved
+	if *useLLM {
+		gaps, err = explainGaps(rep, sp, repo, *specPath)
+		if err != nil {
+			return err
+		}
+	}
+
+	printAudit(stdout, rep, sp, len(tags), *verbose, gaps)
 	return nil
 }
 
-func printAudit(w io.Writer, rep *audit.Report, sp *spec.Spec, tagCount int, verbose bool) {
+// explainGaps asks the model about every version the engine could not answer,
+// and re-checks anywhere it points at.
+//
+// Keyed by the gap's span rather than by version, so the renderer can attach an
+// explanation to the line it already prints.
+func explainGaps(rep *audit.Report, sp *spec.Spec, repo *git.Repo, specPath string) (
+	map[string]*resolved, error,
+) {
+	unknowns := rep.Unknowns()
+	if len(unknowns) == 0 {
+		// Nothing to explain is an ordinary outcome, and an empty map renders
+		// as no annotations at all.
+		return map[string]*resolved{}, nil
+	}
+
+	provider, err := llm.FromConfig("", "")
+	if err != nil {
+		return nil, err
+	}
+	// #nosec G304 -- the spec the user asked to audit, already read once above.
+	raw, err := os.ReadFile(specPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading spec: %w", err)
+	}
+
+	r := &resolver{provider: provider, repo: repo, spec: sp, specYAML: string(raw)}
+	out := make(map[string]*resolved, len(unknowns))
+	for _, gap := range unknowns {
+		// The first version in the span stands for it: they share a cause,
+		// which is why they were grouped.
+		out[gap.Span()] = r.resolve(gap.From, gap.Reason)
+	}
+	return out, nil
+}
+
+func printAudit(w io.Writer, rep *audit.Report, sp *spec.Spec, tagCount int,
+	verbose bool, gaps map[string]*resolved,
+) {
 	fmt.Fprintf(w, "\n%s  %s\n", rep.AdvisoryID, rep.Package)
 	for _, c := range rep.Claims {
 		fmt.Fprintf(w, "  claims  %s\n", c)
@@ -144,14 +195,20 @@ func printAudit(w io.Writer, rep *audit.Report, sp *spec.Spec, tagCount int, ver
 		}
 	}
 
-	if gaps := rep.Unknowns(); len(gaps) > 0 {
+	if unknowns := rep.Unknowns(); len(unknowns) > 0 {
 		fmt.Fprintf(w, "\n  COULD NOT CHECK\n")
-		for _, g := range gaps {
+		for _, g := range unknowns {
 			detail := g.Reason.Describe()
 			if verbose {
 				detail = fmt.Sprintf("%s [%s]", detail, g.Reason)
 			}
 			fmt.Fprintf(w, "    %-16s %s\n", g.Span(), detail)
+
+			// With --llm, the explanation lands under the line it explains
+			// rather than in a separate command run against the same versions.
+			if r := gaps[g.Span()]; r != nil {
+				fmt.Fprint(w, r.describe("      "))
+			}
 		}
 	}
 

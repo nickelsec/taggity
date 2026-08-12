@@ -52,12 +52,14 @@ const banner = `
 
 const usage = `
 Usage:
-  taggity check <pkg>@<version> --spec <file>   check one version
-  taggity audit --spec <file> --advisory <file> audit an advisory's boundaries
+  taggity draft --repo <url> "<what the bug is>"  write a spec from a description
+  taggity check <pkg>@<version> --spec <file>     check one version
+  taggity audit --spec <file> --advisory <file>   audit an advisory's boundaries
+  taggity export --spec <file> --advisory <f>     emit OSV JSON
   taggity init --repo <url> --package <name> --file <f> --symbol <s>
-               --calls <t> [--indicates fixed]  scaffold a spec
-  taggity export --spec <file> --advisory <f>   emit OSV JSON
-  taggity version                               print version
+               --calls <t> [--indicates fixed]    write a spec by hand
+  taggity configure                               pick a model for draft
+  taggity version                                 print version
 
 Run "taggity <command> -h" for command flags.
 `
@@ -96,6 +98,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 		fmt.Fprint(stdout, usage)
 		return nil
 
+	case "draft":
+		return runDraft(rest, stdout, stderr)
+	case "configure":
+		return runConfigure(rest, stdout, stderr)
 	case "check":
 		return runCheck(rest, stdout, stderr)
 	case "audit":

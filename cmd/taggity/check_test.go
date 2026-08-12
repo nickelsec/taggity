@@ -30,7 +30,7 @@ func multiSpec() *spec.Spec {
 func render(t *testing.T, sp *spec.Spec, sig taggity.Signals) string {
 	t.Helper()
 	var buf bytes.Buffer
-	printCheck(&buf, sp, "1.19.0", sig, false, false)
+	printCheck(&buf, sp, "1.19.0", sig, false, false, nil)
 	return buf.String()
 }
 
@@ -122,7 +122,7 @@ func TestCheckOutputAllLocationsAbsent(t *testing.T) {
 	}
 
 	var verbose bytes.Buffer
-	printCheck(&verbose, multiSpec(), "1.19.0", sig, false, true)
+	printCheck(&verbose, multiSpec(), "1.19.0", sig, false, true, nil)
 	if !strings.Contains(verbose.String(), "file_absent") {
 		t.Errorf("--verbose must still print the machine-readable code:\n%s",
 			verbose.String())
@@ -166,7 +166,7 @@ func TestCheckOutputSingleLocationUnchanged(t *testing.T) {
 // --quiet exists so a loop over versions can read the verdict alone.
 func TestCheckQuietPrintsVerdictOnly(t *testing.T) {
 	var buf bytes.Buffer
-	printCheck(&buf, testSpec(""), "1.0.0", taggity.Signals{Present: taggity.Vulnerable}, true, false)
+	printCheck(&buf, testSpec(""), "1.0.0", taggity.Signals{Present: taggity.Vulnerable}, true, false, nil)
 
 	if got := strings.TrimSpace(buf.String()); got != "VULNERABLE" {
 		t.Errorf("quiet output = %q, want the bare verdict", got)

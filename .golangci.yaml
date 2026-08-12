@@ -4,7 +4,6 @@ linters:
   default: all
   disable:
     - cyclop          # gocyclo/gocognit already cover this
-    - depguard        # re-enabled below with real rules
     - exhaustruct     # partial struct literals are idiomatic here
     - funlen          # length alone is not a defect
     - gochecknoglobals # build-time version injection needs one
@@ -51,19 +50,29 @@ linters:
   settings:
     depguard:
       rules:
-        # The v0.1.0 engine contains no LLM code at all. When internal/llm
-        # arrives, nothing outside it may import it: a model must never sit in
-        # an evaluation path, because the same spec has to produce the same
-        # verdict on every run. Enforcing that here makes a violation a build
-        # failure rather than something a reviewer has to notice.
+        # A model must never sit in an evaluation path: the same spec has to
+        # produce the same verdict on every run. Only cmd may reach internal/llm,
+        # to wire up `draft` and the --llm flag; every engine package is denied,
+        # so a violation is a build failure rather than something a reviewer has
+        # to notice.
+        #
+        # This rule silently did nothing until 0.3.0, because depguard was listed
+        # under both disable and enable and disable wins. TestDepguardDeniesLLM
+        # in cmd/taggity now imports it deliberately and fails if the rule stops
+        # firing, since a guarantee nobody has watched fail is not a guarantee.
         llm-out-of-engine:
           files:
-            - "!**/internal/llm/**"
+            - "**/internal/audit/*.go"
+            - "**/internal/check/*.go"
+            - "**/internal/git/*.go"
+            - "**/internal/predicate/*.go"
+            - "**/internal/spec/*.go"
+            - "**/internal/taggity/*.go"
           deny:
             - pkg: github.com/nickelsec/taggity/internal/llm
               desc: >-
-                evaluation code must not import internal/llm; LLM output is
-                pinned into the spec by a human and evaluated deterministically
+                evaluation code must not import internal/llm; a model proposes
+                what to look for and deterministic code decides what is there
 
         # The domain package defines verdict semantics and must not depend on
         # how sources are fetched or parsed.

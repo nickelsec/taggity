@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/nickelsec/taggity/internal/taggity"
 )
@@ -365,6 +366,35 @@ func (r *Repo) Resolve(version string) (commit, tag string, reason taggity.Reaso
 		return "", "", taggity.ReasonNoTag
 	}
 	return t.Commit, t.Name, taggity.ReasonNone
+}
+
+// TreePaths lists repository-relative paths at a commit, filtered by suffix.
+//
+// The engine never needs this: a spec names a path and FileAt reads it. It
+// exists so that when a check fails to find something, a reader can be shown
+// where the file went rather than left to guess. Passing an empty suffix
+// returns everything.
+func (r *Repo) TreePaths(commitHash, suffix string) ([]string, error) {
+	c, err := r.repo.CommitObject(plumbing.NewHash(commitHash))
+	if err != nil {
+		return nil, fmt.Errorf("reading commit %s: %w", commitHash, err)
+	}
+	tree, err := c.Tree()
+	if err != nil {
+		return nil, fmt.Errorf("reading tree at %s: %w", commitHash, err)
+	}
+
+	var out []string
+	err = tree.Files().ForEach(func(f *object.File) error {
+		if suffix == "" || strings.HasSuffix(f.Name, suffix) {
+			out = append(out, f.Name)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("walking tree at %s: %w", commitHash, err)
+	}
+	return out, nil
 }
 
 // FileAt reads a file's contents at a commit.
