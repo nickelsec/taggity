@@ -89,3 +89,34 @@ const (
 	// as though its question had been answered.
 	ReasonUnsupportedRule Reason = "unsupported_rule"
 )
+
+// Describe renders a reason as a sentence for someone reading a report.
+//
+// The constants above stay as they are: they are stable identifiers, they are
+// what --verbose prints, and a corpus is measured by counting them. This is the
+// display layer, so a researcher who has just found a bug does not have to
+// learn this project's vocabulary to read its output.
+func (r Reason) Describe() string {
+	switch r {
+	case ReasonNone:
+		return ""
+	case ReasonNoTag:
+		return "no git tag matches this version"
+	case ReasonCommitUnreadable:
+		return "the tag is there but its commit could not be read; try re-cloning"
+	case ReasonUnparseableVersion:
+		return "this is not a version number"
+	case ReasonFileAbsent:
+		return "the file does not exist in this release"
+	case ReasonSymbolNotFound:
+		return "the file is there, that function is not"
+	case ReasonAmbiguousSymbol:
+		return "several functions share that name; qualify it as Class.method"
+	case ReasonParseFailed:
+		return "the source did not parse"
+	case ReasonUnsupportedRule:
+		return "this build does not implement the rule the spec asks for"
+	default:
+		return string(r)
+	}
+}

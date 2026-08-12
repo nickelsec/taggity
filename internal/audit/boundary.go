@@ -24,6 +24,26 @@ const (
 	RuleUnmentioned     = "unmentioned-line" // claim is silent about this line
 )
 
+// DescribeRule renders a selection rule as the reason a version was worth
+// probing, in the words someone reading a report would use.
+//
+// The constants stay as stable identifiers for --verbose and for anything
+// parsing output; this is the display layer.
+func DescribeRule(rule string) string {
+	switch rule {
+	case RuleBelowIntroduced:
+		return "the advisory says this version is safe"
+	case RuleFixed:
+		return "the advisory says the fix landed here"
+	case RuleBelowFixed:
+		return "the advisory says this version is affected"
+	case RuleUnmentioned:
+		return "the advisory never mentions this release line"
+	default:
+		return rule
+	}
+}
+
 // SelectBoundaries picks the versions where a claim would be wrong.
 //
 // Verifying an entire range is unnecessary: a range is an assertion about its

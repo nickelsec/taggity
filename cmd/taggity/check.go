@@ -17,6 +17,7 @@ func runCheck(args []string, stdout, stderr io.Writer) error {
 	fs.SetOutput(stderr)
 	specPath := fs.String("spec", "", "path to a taggity.yaml spec (required)")
 	quiet := fs.Bool("quiet", false, "print only the verdict")
+	verbose := fs.Bool("verbose", false, "also print the machine-readable reason codes")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, `
 Usage: taggity check <pkg>@<version> --spec <file>
@@ -74,7 +75,7 @@ Flags:
 	}
 
 	sig := c.Version(sp, wantVersion)
-	printCheck(stdout, sp, wantVersion, sig, *quiet)
+	printCheck(stdout, sp, wantVersion, sig, *quiet, *verbose)
 
 	// Exit status reports whether the run succeeded, not what the verdict was.
 	// A tool that exits non-zero on VULNERABLE would be unusable in a loop over
@@ -125,7 +126,7 @@ func splitTarget(arg string) (pkg, version string, err error) {
 	return "", arg, nil
 }
 
-func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals, quiet bool) {
+func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals, quiet, verbose bool) {
 	overall := sig.Overall()
 	if quiet {
 		fmt.Fprintln(w, overall)
@@ -138,13 +139,19 @@ func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals,
 	ev := sig.Deciding()
 
 	fmt.Fprintf(w, "\n%s@%s\n", sp.Package.Name, version)
-	fmt.Fprintf(w, "  rule    %s in %s\n", ruleLine(sp, sig, ev), decidingSymbol(sp, ev))
+	fmt.Fprintf(w, "  looking for  %s in %s\n", ruleLine(sp, sig, ev), decidingSymbol(sp, ev))
 
-	// Unevaluated signals render as an em dash. A signal that never ran must
-	// never look like a pass.
-	fmt.Fprintf(w, "\n  present    %-15s %s\n", sig.Present, ev.Detail)
-	fmt.Fprintf(w, "  reachable  %-15s not evaluated\n", sig.Reachable)
-	fmt.Fprintf(w, "  triggers   %-15s not evaluated\n", sig.Triggers)
+	// The two unimplemented signals are listed only under --verbose. Naming
+	// them in the default output means explaining reachability and PoC
+	// execution to someone who asked one question about one version, and an
+	// em dash beside a word they have to look up is worse than silence. A
+	// signal that never ran still must never look like a pass, which is what
+	// the em dash is for.
+	fmt.Fprintf(w, "\n  found        %-15s %s\n", sig.Present, ev.Detail)
+	if verbose {
+		fmt.Fprintf(w, "  reachable    %-15s not evaluated\n", sig.Reachable)
+		fmt.Fprintf(w, "  triggers     %-15s not evaluated\n", sig.Triggers)
+	}
 
 	// With several locations the summary line alone does not say which one
 	// decided the verdict, and under `any` that is the whole question. The
@@ -164,16 +171,19 @@ func printCheck(w io.Writer, sp *spec.Spec, version string, sig taggity.Signals,
 
 	fmt.Fprintf(w, "\n  → %s", overall)
 	if sig.Reason != taggity.ReasonNone {
-		fmt.Fprintf(w, " [%s]", sig.Reason)
+		fmt.Fprintf(w, ": %s", sig.Reason.Describe())
+		if verbose {
+			fmt.Fprintf(w, " [%s]", sig.Reason)
+		}
 	}
 	fmt.Fprintln(w)
 
 	if ev.Commit != "" {
-		fmt.Fprintf(w, "  at %s (%s) %s\n", ev.Tag, short(ev.Commit), ev.File)
+		fmt.Fprintf(w, "  read %s at %s (%s)\n", ev.File, ev.Tag, short(ev.Commit))
 	}
 	if !sp.MatchMeansVulnerable() {
-		fmt.Fprintln(w, "\n  note: this spec matches the FIX, not the danger."+
-			"\n        VULNERABLE here means the fix is present.")
+		fmt.Fprintln(w, "\n  This spec matches the FIX rather than the danger, so"+
+			"\n  VULNERABLE here means the version is patched.")
 	}
 	fmt.Fprintln(w)
 }

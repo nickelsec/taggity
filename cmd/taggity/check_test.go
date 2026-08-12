@@ -30,7 +30,7 @@ func multiSpec() *spec.Spec {
 func render(t *testing.T, sp *spec.Spec, sig taggity.Signals) string {
 	t.Helper()
 	var buf bytes.Buffer
-	printCheck(&buf, sp, "1.19.0", sig, false)
+	printCheck(&buf, sp, "1.19.0", sig, false, false)
 	return buf.String()
 }
 
@@ -115,8 +115,17 @@ func TestCheckOutputAllLocationsAbsent(t *testing.T) {
 	if strings.Contains(out, "NOT_VULNERABLE") {
 		t.Errorf("unreadable locations must never render as safe:\n%s", out)
 	}
-	if !strings.Contains(out, "file_absent") {
+	// The reason is stated in plain English by default. The code itself is
+	// behind --verbose, so this asserts the sentence rather than the constant.
+	if !strings.Contains(out, taggity.ReasonFileAbsent.Describe()) {
 		t.Errorf("an UNKNOWN must say why:\n%s", out)
+	}
+
+	var verbose bytes.Buffer
+	printCheck(&verbose, multiSpec(), "1.19.0", sig, false, true)
+	if !strings.Contains(verbose.String(), "file_absent") {
+		t.Errorf("--verbose must still print the machine-readable code:\n%s",
+			verbose.String())
 	}
 }
 
@@ -145,15 +154,19 @@ func TestCheckOutputSingleLocationUnchanged(t *testing.T) {
 	if strings.Contains(out, "→ VULNERABLE      a.py") {
 		t.Errorf("breakdown block should not render for one location:\n%s", out)
 	}
-	if !strings.Contains(out, "at v1.0.0 (abc123def456) a.py") {
-		t.Errorf("provenance line changed shape:\n%s", out)
+	// The provenance line must carry all three: what was read, at which tag,
+	// and at which commit. A correction is checked against exactly those.
+	for _, want := range []string{"a.py", "v1.0.0", "abc123def456"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("provenance line lost %q:\n%s", want, out)
+		}
 	}
 }
 
 // --quiet exists so a loop over versions can read the verdict alone.
 func TestCheckQuietPrintsVerdictOnly(t *testing.T) {
 	var buf bytes.Buffer
-	printCheck(&buf, testSpec(""), "1.0.0", taggity.Signals{Present: taggity.Vulnerable}, true)
+	printCheck(&buf, testSpec(""), "1.0.0", taggity.Signals{Present: taggity.Vulnerable}, true, false)
 
 	if got := strings.TrimSpace(buf.String()); got != "VULNERABLE" {
 		t.Errorf("quiet output = %q, want the bare verdict", got)

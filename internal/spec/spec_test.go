@@ -293,17 +293,17 @@ func TestValidateRejectsMalformedAliases(t *testing.T) {
 	}
 }
 
-// The output of this tool is a public claim that a maintainer is wrong. A spec
-// a model drafted and nobody checked cannot carry that claim.
 func TestValidateAuthoringMode(t *testing.T) {
 	withMode := func(block string) string {
 		return strings.Replace(minimal, "signal:", block+"\nsignal:", 1)
 	}
 
-	if _, err := spec.Parse([]byte(withMode("authoring:\n  mode: ai"))); err == nil {
-		t.Error("mode: ai without reviewed_by was accepted")
-	} else if !strings.Contains(err.Error(), "reviewed_by") {
-		t.Errorf("error must name the missing field, got: %v", err)
+	// A drafted spec has to load, or the useful loop is blocked: draft, then
+	// immediately probe two versions to see whether the rule discriminates.
+	// Checking a version makes no claim about anything.
+	if _, err := spec.Parse([]byte(withMode("authoring:\n  mode: ai"))); err != nil {
+		t.Errorf("mode: ai without a reviewer was rejected: %v\n"+
+			"a drafted spec must be runnable before anyone has reviewed it", err)
 	}
 
 	if _, err := spec.Parse([]byte(withMode("authoring:\n  mode: banana"))); err == nil {
@@ -316,6 +316,28 @@ func TestValidateAuthoringMode(t *testing.T) {
 	}
 	if _, err := spec.Parse([]byte(withMode("authoring:\n  mode: manual"))); err != nil {
 		t.Errorf("mode: manual was rejected: %v", err)
+	}
+}
+
+// Publishing is where a model-drafted spec becomes a claim someone receives, so
+// that is where a reviewer is required. Loading and checking are not.
+func TestRequiresReview(t *testing.T) {
+	cases := []struct {
+		name string
+		in   spec.Authoring
+		want bool
+	}{
+		{"drafted, unreviewed", spec.Authoring{Mode: spec.ModeAI}, true},
+		{"drafted, reviewed", spec.Authoring{Mode: spec.ModeAI, ReviewedBy: "nick"}, false},
+		{"hand written", spec.Authoring{Mode: spec.ModeManual}, false},
+		{"nothing recorded", spec.Authoring{}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.in.RequiresReview(); got != c.want {
+				t.Errorf("RequiresReview() = %v, want %v", got, c.want)
+			}
+		})
 	}
 }
 

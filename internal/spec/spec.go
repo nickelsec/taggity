@@ -48,24 +48,33 @@ const (
 )
 
 // validate reports every problem with the authoring block.
+//
+// A drafted spec is allowed to carry mode: ai with no reviewer. Requiring one
+// to load blocked the useful loop, which is to draft a spec and immediately
+// probe two versions to see whether the rule discriminates. Checking a version
+// is not a public claim about anything, so nothing is at stake in it.
+//
+// Publishing is different. Requiring a reviewer moved to export, which is where
+// the claim leaves the machine; see requireReviewed in cmd/taggity/export.go.
 func (a Authoring) validate() []error {
 	var errs []error
 	switch a.Mode {
-	case "", ModeManual:
-	case ModeAI:
-		// The output of this tool is a public claim that a maintainer is wrong.
-		// Recording which model drafted a spec and nobody who checked it would
-		// put that claim's provenance at "a model said so".
-		if a.ReviewedBy == "" {
-			errs = append(errs, fmt.Errorf(
-				"authoring.reviewed_by is required when mode is %q: a spec no "+
-					"human approved is not one to act on", ModeAI))
-		}
+	case "", ModeManual, ModeAI:
 	default:
 		errs = append(errs, fmt.Errorf("authoring.mode is %q, must be %q or %q",
 			a.Mode, ModeManual, ModeAI))
 	}
 	return errs
+}
+
+// RequiresReview reports whether this spec was drafted by a model and has no
+// human reviewer recorded.
+//
+// Exported so export can refuse to publish one. A model-drafted claim going out
+// under nobody's name would put its provenance at "a model said so", and the
+// OSV document is what a maintainer receives.
+func (a Authoring) RequiresReview() bool {
+	return a.Mode == ModeAI && a.ReviewedBy == ""
 }
 
 // Signal groups the evidence sources. Only code is implemented; the others are

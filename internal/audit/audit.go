@@ -36,6 +36,23 @@ const (
 	Indeterminate Outcome = "unknown"
 )
 
+// Describe renders an outcome as a sentence. The constants stay as stable
+// identifiers for --verbose; this is the display layer.
+func (o Outcome) Describe() string {
+	switch o {
+	case Disagreement:
+		return "the advisory says safe, the code says vulnerable"
+	case Consistent:
+		return "matches the advisory"
+	case Narrower:
+		return "the advisory says affected, the code says otherwise"
+	case Indeterminate:
+		return "could not check"
+	default:
+		return string(o)
+	}
+}
+
 // Result is one probed version.
 type Result struct {
 	Boundary Boundary

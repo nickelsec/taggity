@@ -77,6 +77,15 @@ Flags:
 	if err := audit.CheckAdvisoryMatch(sp.Advisory, adv.ID); err != nil {
 		return err
 	}
+	// Drafting and checking a model-written spec is free; publishing one is
+	// not. This document is what reaches a maintainer, and a claim that arrives
+	// under nobody's name has its provenance at "a model said so".
+	if sp.Authoring.RequiresReview() {
+		return errors.New(
+			"this spec was drafted by a model and nobody has reviewed it: set " +
+				"authoring.reviewed_by before exporting. check and audit run " +
+				"without it; only publishing needs a name on the claim")
+	}
 	repo, err := git.OpenOrClone(sp.Repo)
 	if err != nil {
 		return fmt.Errorf("repository is required: %w", err)
