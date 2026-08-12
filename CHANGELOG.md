@@ -8,6 +8,8 @@ compatibility promise and neither has earned one yet.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-12
+
 ### Added
 
 - `taggity draft` writes a spec from a description of a bug, in your own words:
@@ -73,6 +75,29 @@ compatibility promise and neither has earned one yet.
   still refuses one.
 
 ### Fixed
+
+- **`check` printed the opposite verdict on a guard-shaped spec.** The headline
+  was the engine's raw verdict, which answers "did the construct appear", not
+  "is this version vulnerable". Under `indicates: fixed` those are opposite, so
+  a genuinely vulnerable version reported `NOT_VULNERABLE`, in green, with a
+  note underneath asking the reader to invert it themselves.
+
+  qutebrowser 1.8.0 is the case that found it. Seven of the sixteen corpus specs
+  are guard-shaped, so this was not an edge case, and it is the shape of an
+  under-report produced by the display layer.
+
+  `Verdict.Affected` now re-reads a verdict against the spec's polarity.
+  `UNKNOWN` passes through untouched: inverting an unanswered question would
+  turn "the file was not there" into a claim about safety. `audit` and `export`
+  already applied polarity and do not move.
+
+  **This changes `check` output, including `--quiet`.** A guard-shaped spec now
+  prints the opposite word to 0.2.2, and it is the correct one.
+
+- The evidence row described the rule rather than the finding, so it read
+  `main calls _validate_untrusted_args` whether or not it did. It now says
+  `does not call` when absent, and reports presence as `yes`/`no` rather than a
+  verdict word answering a different question. `UNKNOWN` stays as it was.
 
 - **The seam was never enforced.** `depguard` was listed under both `disable`
   and `enable` in `.golangci.yaml`, and under `default: all` the disable wins,
@@ -354,7 +379,8 @@ Binaries for Linux, macOS and Windows on amd64 and arm64, with SHA-256 checksums
 and an SPDX SBOM per archive. Built with `CGO_ENABLED=0` and `-trimpath`,
 timestamped from the commit.
 
-[Unreleased]: https://github.com/nickelsec/taggity/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/nickelsec/taggity/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/nickelsec/taggity/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/nickelsec/taggity/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/nickelsec/taggity/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/nickelsec/taggity/compare/v0.1.0...v0.2.0
