@@ -438,8 +438,11 @@ backported branches respectively.
 
 **Five of five fixes were guard-shaped**, adding a check rather than removing a
 dangerous call, so all five specs needed `indicates: fixed`. Across eight
-multi-branch advisories now audited, only Vitrage was danger-shaped. The `calls`
-vocabulary was designed around the shape that turns out to be the exception.
+multi-branch advisories now audited, only Vitrage was danger-shaped.
+
+That looked like a fact about the domain and was a fact about the sampling. The
+mechanical sweep below turned up danger-shaped fixes at roughly the same rate,
+and the corpus now stands at nine against seven. See the correction at the end.
 
 ## Finishing the sweep: eight audited, one finding
 
@@ -709,6 +712,20 @@ tool. **Guard-shaped fixes dominate Python security patches.** Across nine
 audited advisories only Vitrage and pymatgen removed a dangerous call, and both
 advisories were correct. `indicates: fixed` is the primary path, not the
 exception, and the vocabulary should be judged on how well it serves that.
+
+> **Corrected after the mechanical sweep.** That held for the nine advisories
+> chosen by hand and does not hold for the corpus as a whole. Classifying all
+> sixteen by their `indicates` field gives **nine danger-shaped against seven
+> guard-shaped**: close to an even split.
+>
+> The original count came from grepping for the word "fixed", which matches
+> spec comments as well as the field. The sampling explains the rest: the first
+> nine were picked partly because a guard was easy to name, and the mechanical
+> sweep that followed was not.
+>
+> The consequence is practical. There is no safe default polarity to fall back
+> on, so `taggity draft` has to teach the distinction rather than lean on a
+> prior, and its prompt carries one worked example of each.
 
 pymatgen (PYSEC-2024-226) is in the corpus as the danger-shaped case: eval on a
 caller-supplied basis-change string, removed in 2024.2.20. Two probes of 424

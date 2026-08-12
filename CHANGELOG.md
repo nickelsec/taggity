@@ -8,6 +8,82 @@ compatibility promise and neither has earned one yet.
 
 ## [Unreleased]
 
+### Added
+
+- `taggity draft` writes a spec from a description of a bug, in your own words:
+
+  ```sh
+  taggity draft --repo github.com/foo/bar \
+    "SSRF in proxy_handler at server.py:43, the url param reaches requests.get"
+  ```
+
+  It reads the real source at HEAD for any file the description names, so the
+  model works from the code rather than its memory of the package. Output is
+  the spec and one comment line, and it loads and runs immediately: the loop
+  that makes a drafted spec trustworthy is to probe a version before the fix
+  and one after, and a gate in front of that blocks the only cheap way to catch
+  a rule matching code the fix never changed.
+
+  The prompt carries four worked specs from the corpus rather than only a
+  schema, two of them near-identical in shape and opposite in polarity. That is
+  the field most often got wrong, and the corpus is nine danger-shaped against
+  seven guard-shaped, so there is no safe default to fall back on.
+
+- `taggity configure` picks a model and stores the answer, so drafting needs no
+  environment variable. Anthropic and OpenRouter are both supported.
+
+  The file holds an API key, so it is written owner-only and refused when the
+  permissions loosen. The key is never echoed. An environment variable always
+  wins over the stored one, so CI needs no file and a single run can override
+  it. `--provider` and `--model` make it non-interactive; a key is never
+  accepted as an argument, because a key on a command line lands in shell
+  history.
+
+- `--llm` on `check` and `audit` explains the versions that could not be
+  checked, in the report already being read rather than in a second command.
+
+  The model proposes where else to look, that proposal becomes an ordinary spec
+  location, and **the engine re-checks and decides**. Nothing a model says
+  becomes a verdict: "the file is somewhere else" is a search failure rather
+  than evidence about what is in the file. A resolved gap therefore stays
+  reproducible, since what the model contributed was a path.
+
+  One call per grouped gap, not per version. Without the flag nothing changes
+  and no key is read.
+
+- `Repo.TreePaths` lists paths at a commit. The engine never needs it, since a
+  spec names a file and `FileAt` reads it; it exists so a reader can be shown
+  where a file went instead of guessing.
+
+### Changed
+
+- Reports are written in the reader's words. `[unmentioned-line]`,
+  `narrower-than-claimed` and `NOT PROBED (no released version at these edges)`
+  were this project's internal vocabulary, and they were the first thing anyone
+  saw. The constants are unchanged, `--verbose` still prints them, and no
+  reason code reaches exported OSV, so machine-readable output does not move.
+
+- `check` drops the `reachable` and `triggers` rows from default output. Naming
+  two unimplemented signals means explaining reachability and PoC execution to
+  someone who asked one question about one version. They stay under `--verbose`.
+
+- A spec with `authoring.mode: ai` no longer needs `reviewed_by` to load.
+  Requiring one blocked the loop that makes a drafted spec trustworthy, and
+  checking a version is not a claim about anything. Publishing is, so `export`
+  still refuses one.
+
+### Fixed
+
+- **The seam was never enforced.** `depguard` was listed under both `disable`
+  and `enable` in `.golangci.yaml`, and under `default: all` the disable wins,
+  so the `llm-out-of-engine` rule has done nothing since v0.1.0. An engine
+  package could have imported `internal/llm` and the build would have passed.
+
+  Verified by importing it from `internal/check` on purpose: silent before,
+  `depguard: 1` after. The rule now names every package that can produce a
+  verdict and allows `cmd`, which legitimately needs it. A test fails if
+  depguard is ever listed twice again.
+
 ## [0.2.2] - 2026-08-11
 
 Two verdict-affecting fixes, both found by auditing advisories nobody had read

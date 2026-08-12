@@ -1,7 +1,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
 
-.PHONY: all build test test-corpus verify lint cover clean release-check
+.PHONY: all build test test-corpus drill verify lint cover clean release-check
 
 all: lint test build
 
@@ -24,6 +24,12 @@ test:
 # that the corpus still reproduces, and this target exists to produce evidence.
 test-corpus:
 	go test $(RACE) -tags corpus -count=1 ./...
+
+# Does drafting write the spec a person wrote by hand? Two cases from the
+# corpus, one that should match exactly and one that should hit the documented
+# limit. Needs an API key, which is why it is neither in `all` nor in CI.
+drill: build
+	./scripts/drill.sh
 
 # Everything the README claims, verified. Not in `all` because it needs network.
 verify: lint test test-corpus

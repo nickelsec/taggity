@@ -1,27 +1,77 @@
-# taggity
+<p align="center">
+  <img width="420" alt="taggity" src="docs/logo.png" />
+</p>
 
-[![CI](https://github.com/nickelsec/taggity/actions/workflows/ci.yml/badge.svg)](https://github.com/nickelsec/taggity/actions/workflows/ci.yml)
+<p align="center">Finds the versions an advisory says are safe and the code says are not.</p>
 
-```
-     ┌─ taggity ─┐
-     │           ▼
-  ◇──◇──◇──◆──◆──◇
-           └──┬──┘
-          vulnerable
-```
+<p align="center">
+  <a href="https://github.com/nickelsec/taggity/actions/workflows/ci.yml"><img src="https://github.com/nickelsec/taggity/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/nickelsec/taggity/releases/latest"><img src="https://img.shields.io/github/v/release/nickelsec/taggity?color=blue&label=release" alt="Release"></a>
+  <a href="https://github.com/nickelsec/taggity/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"></a>
+  <a href="https://pkg.go.dev/github.com/nickelsec/taggity"><img src="https://img.shields.io/badge/go-reference-blue?logo=go&logoColor=white" alt="Go Reference"></a>
+</p>
 
-Answers one question about a released version: does it contain the vulnerable
-code?
+<p align="center">
+  <img width="100%" alt="taggity demo" src="docs/demo.gif" />
+</p>
+
+<sub><i>The verdicts, commit hashes, release counts and drafted spec above are
+transcribed from real runs against
+<a href="https://github.com/qutebrowser/qutebrowser">qutebrowser</a> at the tags
+shown; the spec is what the model returned. The frames are rendered rather than
+screen-captured, so the pacing is set for reading, the commands ran separately
+rather than in one session, the spec path is shortened, and the audit output is
+trimmed of a commit-range claim the advisory also carries. The opening
+<code>configure</code> screen is the command's own prompt text rather than a
+transcript. The commands below reproduce the rest.</i></sub>
+
+Advisories get version ranges wrong. A fix lands on 2.x and never on 1.x, or a
+range is copied from a release note that was already wrong, and a scanner reading
+that advisory stays quiet about a release that is still vulnerable.
+
+taggity checks the claim against the source, one released version at a time.
+
+Describe the bug in your own words and it writes the spec:
 
 ```sh
-taggity check pyyaml@3.13 --spec testdata/corpus/GHSA-rprw-h62v-c2w7-defaults.yaml
+taggity draft --repo github.com/qutebrowser/qutebrowser \
+  "a crafted qutebrowserurl: link reaches main() and can run commands
+   like :spawn. The fix adds _validate_untrusted_args" > spec.yaml
+```
+
+```yaml
+signal:
+  code:
+    file: qutebrowser/qutebrowser.py
+    symbol: main
+    rule:
+      calls: _validate_untrusted_args
+      indicates: fixed
+```
+
+`indicates: fixed` is there because the description said the fix *adds* a call.
+The rule matches the patch rather than the bug, and taggity reads every verdict
+accordingly — it is the field to check first in a drafted spec.
+
+Then ask about any released version:
+
+```sh
+taggity check qutebrowser@1.14.1 --spec spec.yaml
 ```
 
 ```
-  present    VULNERABLE      load declares Loader=Loader
+qutebrowser@1.14.1
+  looking for  calls: _validate_untrusted_args (indicates: fixed) in main
+
+  found        no              main does not call _validate_untrusted_args
+
   → VULNERABLE
-  at 3.13 (a2d481b8dbd2) lib/yaml/__init__.py
+  read qutebrowser/qutebrowser.py at v1.14.1 (06cc853ef7c7)
 ```
+
+PYSEC-2021-382 claims `< 1.8.0` and `>= 2.0.0, < 2.4.0`. It says nothing about
+1.14.1, so a scanner reading it stays quiet — and the guard is not in that
+release.
 
 The verdict comes with the tag, the commit and the file it was read from, so
 anyone can check the answer by hand. Verdicts are `VULNERABLE`,
@@ -29,13 +79,16 @@ anyone can check the answer by hand. Verdicts are `VULNERABLE`,
 moved or the file was unreadable, taggity says so instead of reporting the
 version clean.
 
-Once you can ask that about one version, you can ask it about the edges of an
-advisory's range, which is where advisories tend to be wrong. A fix gets
-backported to 2.x but not 1.x and the advisory only mentions 2.x. Or the range
-is copied from a release note that was already wrong. In
-`github/advisory-database` there are 99 merged pull requests mentioning
-backports, most of them corrections someone worked out by hand. `taggity audit`
-probes the versions where the claimed range would be wrong.
+**Read the drafted spec before you trust a verdict from it.** A model writes a
+plausible spec easily and a discriminating one less often, and the two look
+identical on the page. The cheap way to tell: run it against a version before
+the fix and one after. If both say the same thing, the rule matches code that
+never changed and the spec proves nothing.
+
+Once you can ask that about one version, `taggity audit` asks it at the edges of
+an advisory's whole claimed range. That work is otherwise done by hand:
+`github/advisory-database` carries 99 merged pull requests mentioning backports,
+most of them corrections someone worked out one release at a time.
 
 ## Install
 
@@ -46,6 +99,25 @@ go install github.com/nickelsec/taggity/cmd/taggity@latest
 Binaries for Linux, macOS and Windows are on the
 [releases page](https://github.com/nickelsec/taggity/releases), with checksums
 and an SBOM. Pure Go, no cgo, so nothing needs a C compiler.
+
+Drafting needs a model. Nothing else does:
+
+```sh
+taggity configure
+```
+
+```
+Which model should taggity draft with?
+  1) Anthropic
+  2) OpenRouter (many models behind one key)
+```
+
+The answer goes in a file written owner-only, which taggity refuses to read if
+that changes. `ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY` in the environment
+always wins over the stored one, so CI needs no file and a single run can
+override it.
+
+`check`, `audit` and `export` never read a key unless you pass `--llm`.
 
 ## How it works
 
@@ -113,11 +185,11 @@ signal:
 Output names the location that answered, and marks it in the breakdown:
 
 ```
-  present    VULNERABLE      Client._build_request calls requests.get
+  found        yes             Client._build_request calls requests.get
 
      UNKNOWN         src/examplepkg/client/utils.py  not present at v1.4.0
      UNKNOWN         src/examplepkg/client/base.py   not present at v1.4.0
-   * VULNERABLE      src/examplepkg/client.py        Client._build_request calls requests.get
+   * yes             src/examplepkg/client.py        Client._build_request calls requests.get
 ```
 
 If no location matches and one of them could not be read, the result is
@@ -149,6 +221,35 @@ answer. A verdict reached through an alias says so:
 An alias is a human claim that two names are the same construct, so the output
 names the symbol that was actually read and leaves that claim visible.
 
+### When you do not know where it went
+
+Finding the moved file is the expensive part: it means reading source at that
+tag by hand. `--llm` does that reading:
+
+```sh
+taggity audit --spec spec.yaml --advisory adv.json --llm
+```
+
+```
+  COULD NOT CHECK
+    1.10.4           the file is there, that function is not
+      the module was split in 2.0 and this handler moved
+      taggity re-checked pycsw/ogc/csw/csw2.py and found: VULNERABLE
+```
+
+**The model narrows the search; the engine still decides.** It proposes where
+else to look, that proposal becomes an ordinary spec location, and the parser
+re-checks and produces the verdict. Nothing a model says becomes a verdict,
+because "the file is somewhere else" is a search failure rather than evidence
+about what is in the file: the code may be there, the version may predate the
+feature, or it may have moved and been fixed.
+
+So the verdict beside a resolved gap is reproducible. Run the same spec tomorrow
+with no model and you get the same answer, because what the model contributed
+was a path.
+
+Without `--llm` nothing changes and no key is read.
+
 ## Auditing an advisory's range
 
 A range is a claim about its edges, so `audit` probes the edges:
@@ -162,20 +263,21 @@ taggity audit --spec testdata/corpus/GHSA-8fww-64cx-x8p5.yaml \
 GHSA-8fww-64cx-x8p5  redis
   claims  >= 4.5.0, < 4.5.4
   claims  >= 4.2.0, < 4.4.4
-  rule    calls: asyncio.shield (indicates: fixed) in Redis.execute_command
-          (matches the FIX; a match means the fix is present)
-  probed  11 of 157 tags
+  looking for  calls: asyncio.shield (indicates: fixed) in Redis.execute_command
+               this matches the FIX, so finding it means the version is patched
+  checked      11 of 157 releases
 
-  DISAGREEMENTS
-    5.3.1-8.1.0      NOT_VULNERABLE  [unmentioned-line]
+  THE ADVISORY SAYS SAFE, THE CODE SAYS VULNERABLE
+    5.3.1-8.1.0      the advisory never mentions this release line
 
-  GAPS (could not answer)
-    2.10.6-4.1.4     [file_absent]
+  COULD NOT CHECK
+    2.10.6-4.1.4     the file does not exist in this release
 
-  1 finding(s) across 4 versions · 4 consistent · 0 narrower · 1 gap(s) across 3 versions
+  1 to look at · 4 agree with the advisory · 1 could not be checked
 ```
 
-That is 11 checks against redis-py's 157 tags instead of 157.
+That is 11 checks against redis-py's 157 tags instead of 157. `--verbose` adds
+the machine-readable rule and reason codes behind each line.
 
 A disagreement is something to go read, not a correction to file. The one above
 was investigated by hand and turned out to be fine: the guard was deliberately
@@ -227,6 +329,15 @@ looking entirely correct.
   A rule naming the sink will keep reporting `VULNERABLE` after the fix lands.
   Write the rule against something the fix actually adds or removes, and if
   nothing structural changes, the spec cannot express that vulnerability.
+- `draft` makes specs faster to write, not more expressive. It writes in the
+  same two rule kinds, including specs that match a construct's neighbourhood
+  rather than the bug, which is the failure directly above. Filtering the PyPI
+  advisory database for multi-range advisories leaves 3,294, and 1,108 of them
+  name a CWE this vocabulary cannot ask about at all.
+- A drafted spec covers what the description mentions. If the same construct
+  also lives in a file you did not name, the draft will not know: pycsw's fix
+  touches `server.py` while the 2.x line kept a copy in `ogc/csw/csw2.py`.
+  `--llm` is what finds the second one, after a check comes back `UNKNOWN`.
 - Needs a git repository. No repo, no answer.
 - Assumes the tag is what was published. Uploads from a dirty tree and
   untagged hotfixes are invisible.
@@ -255,14 +366,24 @@ only two removed a call.
 ## Development
 
 ```sh
-make test         # hermetic, no network
+make test         # hermetic, no network, no API key
 make test-corpus  # clones real repositories and checks against real advisories
+make drill        # does draft write the spec a person wrote by hand? needs a key
 make lint
 make build
 ```
 
 The corpus lives in `testdata/corpus/` alongside notes on what each case
 established. `make test-corpus` is what reproduces the results above.
+
+`make drill` is the only target that needs an API key, which is why it is not
+in CI. It drafts specs for two corpus advisories and compares them with the
+hand-written ones: trytond should match on file, symbol, rule and polarity,
+and pycsw should hit the documented limit by covering one of its two locations.
+
+`internal/llm` is the only package allowed to call a model, and `depguard`
+fails the build if anything that can produce a verdict imports it. Deleting the
+package leaves every other capability working, which is the point of the split.
 
 ## License
 

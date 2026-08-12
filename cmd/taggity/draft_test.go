@@ -29,8 +29,8 @@ func TestPathsIn(t *testing.T) {
 		},
 		{
 			name: "a nested path survives",
-			in:   "the bug is in src/mcp/client/auth.py in the discovery method",
-			want: []string{"src/mcp/client/auth.py"},
+			in:   "the bug is in src/pkg/client/auth.py in the discovery method",
+			want: []string{"src/pkg/client/auth.py"},
 		},
 		{
 			name: "two files",
